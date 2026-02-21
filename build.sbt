@@ -2,7 +2,6 @@ inThisBuild(
   List(
     scalaVersion := "3.8.1",
     organization := "io.github.arashi01",
-    description := "",
     startYear := Some(2026),
     homepage := Some(url("https://github.com/arashi01/zio-jwt")),
     semanticdbEnabled := true,
@@ -41,6 +40,7 @@ val `zio-jwt-core` =
     .settings(unitTestSettings)
     .settings(fileHeaderSettings)
     .settings(publishSettings)
+    .settings(description := "Pure-Scala JWT core types, algorithms, and codec API")
     .nativeSettings(nativeSettings)
     .settings(libraryDependencies += libraries.boilerplate.value)
     .settings(libraryDependencies += libraries.zio.value)
@@ -62,6 +62,7 @@ val `zio-jwt-jsoniter` =
     .settings(fileHeaderSettings)
     .settings(publishSettings)
     .nativeSettings(nativeSettings)
+    .settings(description := "jsoniter-scala codecs for zio-jwt types")
     .settings(libraryDependencies += libraries.`jsoniter-scala-core`.value)
     .settings(libraryDependencies += libraries.`jsoniter-scala-macros`.value % Provided)
 
@@ -75,6 +76,7 @@ val `zio-jwt` =
     .settings(unitTestSettings)
     .settings(fileHeaderSettings)
     .settings(publishSettings)
+    .settings(description := "JWT signing, verification, and validation for the JVM")
 
 val `zio-http-jwt` =
   project
@@ -84,6 +86,7 @@ val `zio-http-jwt` =
     .settings(unitTestSettings)
     .settings(fileHeaderSettings)
     .settings(publishSettings)
+    .settings(description := "zio-http middleware and JWKS provider for zio-jwt")
     .settings(libraryDependencies += libraries.`zio-http`.value)
 
 val `zio-jwt-jvm` =
