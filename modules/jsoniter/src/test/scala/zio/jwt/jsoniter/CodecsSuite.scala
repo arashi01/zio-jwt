@@ -1,14 +1,35 @@
+/*
+ * Copyright (c) 2026 Ali Rashid.
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining a copy of
+ * this software and associated documentation files (the "Software"), to deal in
+ * the Software without restriction, including without limitation the rights to
+ * use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of
+ * the Software, and to permit persons to whom the Software is furnished to do so,
+ * subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in all
+ * copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS
+ * FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR
+ * COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER
+ * IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
+ * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+ */
 package zio.jwt.jsoniter
+
+import zio.NonEmptyChunk
 
 import com.github.plokhotnyuk.jsoniter_scala.core.*
 
-import zio.NonEmptyChunk
 import zio.jwt.*
 
 class NumericDateCodecSuite extends munit.FunSuite:
 
   test("round-trips epoch seconds") {
-    val nd    = NumericDate.fromEpochSecond(1700000000L)
+    val nd = NumericDate.fromEpochSecond(1700000000L)
     val bytes = writeToArray(nd)
     assertEquals(new String(bytes, "UTF-8"), "1700000000")
     assertEquals(readFromArray[NumericDate](bytes), nd)
@@ -23,12 +44,13 @@ class NumericDateCodecSuite extends munit.FunSuite:
     val bytes = "-86400".getBytes("UTF-8")
     assertEquals(readFromArray[NumericDate](bytes).toEpochSecond, -86400L)
   }
+end NumericDateCodecSuite
 
 class AlgorithmCodecSuite extends munit.FunSuite:
 
   test("round-trips all 12 algorithms") {
     Algorithm.values.foreach { alg =>
-      val bytes   = writeToArray(alg)
+      val bytes = writeToArray(alg)
       val decoded = readFromArray[Algorithm](bytes)
       assertEquals(decoded, alg)
     }
@@ -52,11 +74,12 @@ class AlgorithmCodecSuite extends munit.FunSuite:
       readFromArray[Algorithm](bytes)
     }
   }
+end AlgorithmCodecSuite
 
 class KidCodecSuite extends munit.FunSuite:
 
   test("round-trips valid kid") {
-    val kid   = Kid.fromUnsafe("rsa-key-1")
+    val kid = Kid.fromUnsafe("rsa-key-1")
     val bytes = writeToArray(kid)
     assertEquals(readFromArray[Kid](bytes), kid)
   }
@@ -67,6 +90,7 @@ class KidCodecSuite extends munit.FunSuite:
       readFromArray[Kid](bytes)
     }
   }
+end KidCodecSuite
 
 class AudienceCodecSuite extends munit.FunSuite:
 
@@ -87,7 +111,7 @@ class AudienceCodecSuite extends munit.FunSuite:
 
   test("decodes JSON array as Many") {
     val bytes = """["x","y","z"]""".getBytes("UTF-8")
-    val aud   = readFromArray[Audience](bytes)
+    val aud = readFromArray[Audience](bytes)
     assertEquals(aud, Audience.Many(NonEmptyChunk("x", "y", "z")))
   }
 
@@ -102,30 +126,31 @@ class AudienceCodecSuite extends munit.FunSuite:
       readFromArray[Audience](bytes)
     }
   }
+end AudienceCodecSuite
 
 class JoseHeaderCodecSuite extends munit.FunSuite:
 
   test("round-trips minimal header") {
     val header = JoseHeader(Algorithm.RS256, None, None, None)
-    val bytes  = writeToArray(header)
+    val bytes = writeToArray(header)
     assertEquals(readFromArray[JoseHeader](bytes), header)
   }
 
   test("round-trips full header") {
     val header = JoseHeader(Algorithm.ES256, Some("JWT"), Some("jwt"), Some(Kid.fromUnsafe("k1")))
-    val bytes  = writeToArray(header)
+    val bytes = writeToArray(header)
     assertEquals(readFromArray[JoseHeader](bytes), header)
   }
 
   test("encodes alg as string") {
     val bytes = writeToArray(JoseHeader(Algorithm.HS256, None, None, None))
-    val json  = new String(bytes, "UTF-8")
+    val json = new String(bytes, "UTF-8")
     assert(json.contains("\"alg\":\"HS256\""))
   }
 
   test("omits None fields") {
     val bytes = writeToArray(JoseHeader(Algorithm.HS256, None, None, None))
-    val json  = new String(bytes, "UTF-8")
+    val json = new String(bytes, "UTF-8")
     assert(!json.contains("typ"))
     assert(!json.contains("cty"))
     assert(!json.contains("kid"))
@@ -154,16 +179,17 @@ class JoseHeaderCodecSuite extends munit.FunSuite:
 
   test("ignores unknown fields") {
     val bytes = """{"alg":"HS256","x5t":"abc","custom":42}""".getBytes("UTF-8")
-    val h     = readFromArray[JoseHeader](bytes)
+    val h = readFromArray[JoseHeader](bytes)
     assertEquals(h.alg, Algorithm.HS256)
     assertEquals(h.typ, None)
   }
+end JoseHeaderCodecSuite
 
 class RegisteredClaimsCodecSuite extends munit.FunSuite:
 
   test("round-trips empty claims") {
     val claims = RegisteredClaims(None, None, None, None, None, None, None)
-    val bytes  = writeToArray(claims)
+    val bytes = writeToArray(claims)
     assertEquals(readFromArray[RegisteredClaims](bytes), claims)
   }
 
@@ -183,46 +209,47 @@ class RegisteredClaimsCodecSuite extends munit.FunSuite:
 
   test("encodes NumericDate fields as epoch seconds") {
     val claims = RegisteredClaims(None, None, None, Some(NumericDate.fromEpochSecond(1700000000L)), None, None, None)
-    val json   = new String(writeToArray(claims), "UTF-8")
+    val json = new String(writeToArray(claims), "UTF-8")
     assert(json.contains("\"exp\":1700000000"))
     assert(!json.contains("T"))
   }
 
   test("decodes with audience as string") {
     val bytes = """{"aud":"api"}""".getBytes("UTF-8")
-    val c     = readFromArray[RegisteredClaims](bytes)
+    val c = readFromArray[RegisteredClaims](bytes)
     assertEquals(c.aud, Some(Audience.Single("api")))
   }
 
   test("decodes with audience as array") {
     val bytes = """{"aud":["a","b"]}""".getBytes("UTF-8")
-    val c     = readFromArray[RegisteredClaims](bytes)
+    val c = readFromArray[RegisteredClaims](bytes)
     assertEquals(c.aud, Some(Audience.Many(NonEmptyChunk("a", "b"))))
   }
 
   test("decodes null audience as None") {
     val bytes = """{"aud":null}""".getBytes("UTF-8")
-    val c     = readFromArray[RegisteredClaims](bytes)
+    val c = readFromArray[RegisteredClaims](bytes)
     assertEquals(c.aud, None)
   }
 
   test("ignores unknown fields") {
     val bytes = """{"iss":"x","custom_claim":true,"nested":{"a":1}}""".getBytes("UTF-8")
-    val c     = readFromArray[RegisteredClaims](bytes)
+    val c = readFromArray[RegisteredClaims](bytes)
     assertEquals(c.iss, Some("x"))
   }
 
   test("encodes audience Single as string") {
     val claims = RegisteredClaims(None, None, Some(Audience("one")), None, None, None, None)
-    val json   = new String(writeToArray(claims), "UTF-8")
+    val json = new String(writeToArray(claims), "UTF-8")
     assert(json.contains("\"aud\":\"one\""))
   }
 
   test("encodes audience Many as array") {
     val claims = RegisteredClaims(None, None, Some(Audience(NonEmptyChunk("a", "b"))), None, None, None, None)
-    val json   = new String(writeToArray(claims), "UTF-8")
+    val json = new String(writeToArray(claims), "UTF-8")
     assert(json.contains("\"aud\":[\"a\",\"b\"]"))
   }
+end RegisteredClaimsCodecSuite
 
 class JwtCodecBridgeSuite extends munit.FunSuite:
 
@@ -236,15 +263,16 @@ class JwtCodecBridgeSuite extends munit.FunSuite:
   }
 
   test("JwtCodec bridge decode returns Left on invalid input") {
-    val codec  = summon[JwtCodec[JoseHeader]]
-    val bytes  = "not json".getBytes("UTF-8")
+    val codec = summon[JwtCodec[JoseHeader]]
+    val bytes = "not json".getBytes("UTF-8")
     val result = codec.decode(bytes)
     assert(result.isLeft)
   }
 
   test("JwtCodec bridge encode then decode round-trips") {
-    val codec  = summon[JwtCodec[RegisteredClaims]]
+    val codec = summon[JwtCodec[RegisteredClaims]]
     val claims = RegisteredClaims(Some("iss"), None, None, Some(NumericDate.fromEpochSecond(100L)), None, None, None)
-    val bytes  = codec.encode(claims)
+    val bytes = codec.encode(claims)
     assertEquals(codec.decode(bytes), Right(claims))
   }
+end JwtCodecBridgeSuite

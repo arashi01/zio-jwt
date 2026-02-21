@@ -1,16 +1,35 @@
+/*
+ * Copyright (c) 2026 Ali Rashid.
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining a copy of
+ * this software and associated documentation files (the "Software"), to deal in
+ * the Software without restriction, including without limitation the rights to
+ * use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of
+ * the Software, and to permit persons to whom the Software is furnished to do so,
+ * subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in all
+ * copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS
+ * FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR
+ * COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER
+ * IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
+ * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+ */
 package zio.jwt.http
 
 import java.security.KeyPairGenerator
-import java.security.interfaces.ECPublicKey as JcaEcPublicKey
 import java.security.interfaces.ECPrivateKey as JcaEcPrivateKey
+import java.security.interfaces.ECPublicKey as JcaEcPublicKey
 import java.security.spec.ECGenParameterSpec
 import javax.crypto.KeyGenerator
 
-import com.github.plokhotnyuk.jsoniter_scala.core.*
-
-import munit.FunSuite
-
 import zio.Chunk
+
+import com.github.plokhotnyuk.jsoniter_scala.core.*
+import munit.FunSuite
 
 import zio.jwt.*
 
@@ -45,8 +64,14 @@ class JwkCodecSuite extends FunSuite:
 
   test("KeyOp round-trips all variants") {
     val allOps = List(
-      KeyOp.Sign, KeyOp.Verify, KeyOp.Encrypt, KeyOp.Decrypt,
-      KeyOp.WrapKey, KeyOp.UnwrapKey, KeyOp.DeriveKey, KeyOp.DeriveBits
+      KeyOp.Sign,
+      KeyOp.Verify,
+      KeyOp.Encrypt,
+      KeyOp.Decrypt,
+      KeyOp.WrapKey,
+      KeyOp.UnwrapKey,
+      KeyOp.DeriveKey,
+      KeyOp.DeriveBits
     )
     for op <- allOps do
       val bytes = writeToArray(op)
@@ -70,8 +95,8 @@ class JwkCodecSuite extends FunSuite:
     val kpg = KeyPairGenerator.getInstance("EC")
     kpg.initialize(ECGenParameterSpec("secp256r1"))
     val kp = kpg.generateKeyPair()
-    val pub = kp.getPublic.asInstanceOf[JcaEcPublicKey]
-    val priv = kp.getPrivate.asInstanceOf[JcaEcPrivateKey]
+    val pub = kp.getPublic.asInstanceOf[JcaEcPublicKey] // scalafix:ok DisableSyntax.asInstanceOf; JCA KeyPair type narrowing
+    val priv = kp.getPrivate.asInstanceOf[JcaEcPrivateKey] // scalafix:ok DisableSyntax.asInstanceOf; JCA KeyPair type narrowing
     val jwk = Jwk.from(priv, pub, Some(Kid.fromUnsafe("ec-priv-1"))).toOption.get
     val bytes = writeToArray(jwk)
     val decoded = readFromArray[Jwk](bytes)
@@ -201,3 +226,4 @@ class JwkCodecSuite extends FunSuite:
     assert(json.contains(""""dq":"""))
     assert(json.contains(""""qi":"""))
   }
+end JwkCodecSuite

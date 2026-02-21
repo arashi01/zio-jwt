@@ -1,12 +1,36 @@
+/*
+ * Copyright (c) 2026 Ali Rashid.
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining a copy of
+ * this software and associated documentation files (the "Software"), to deal in
+ * the Software without restriction, including without limitation the rights to
+ * use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of
+ * the Software, and to permit persons to whom the Software is furnished to do so,
+ * subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in all
+ * copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS
+ * FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR
+ * COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER
+ * IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
+ * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+ */
 package zio.jwt.jsoniter
 
-import com.github.plokhotnyuk.jsoniter_scala.core.*
-
-import boilerplate.unwrap
+import scala.util.Try
 
 import zio.Chunk
 import zio.NonEmptyChunk
+
+import boilerplate.unwrap
+import com.github.plokhotnyuk.jsoniter_scala.core.*
+
 import zio.jwt.*
+
+// scalafix:off DisableSyntax.var, DisableSyntax.null, DisableSyntax.asInstanceOf, DisableSyntax.while; jsoniter-scala codec API requires mutable state, null sentinels, and tight loops for streaming decode
 
 /** jsoniter-scala [[JsonValueCodec]] instances for zio-jwt core types. */
 
@@ -62,24 +86,27 @@ given JsonValueCodec[Audience]:
           case Some(nec) => Audience(nec)
           case None      => in.decodeError("audience array must not be empty")
     else in.decodeError("expected string or array for audience")
+    end if
+  end decodeValue
 
   override def encodeValue(x: Audience, out: JsonWriter): Unit =
     x match
       case Audience.Single(v) => out.writeVal(v)
-      case Audience.Many(vs) =>
+      case Audience.Many(vs)  =>
         out.writeArrayStart()
         vs.foreach(out.writeVal)
         out.writeArrayEnd()
 
   override def nullValue: Audience = null.asInstanceOf[Audience]
+end given
 
 given JsonValueCodec[JoseHeader]:
   override def decodeValue(in: JsonReader, default: JoseHeader): JoseHeader =
     var alg: Algorithm | Null = null
-    var typ: Option[String]   = None
-    var cty: Option[String]   = None
-    var kid: Option[Kid]      = None
-    var algSeen                = false
+    var typ: Option[String] = None
+    var cty: Option[String] = None
+    var kid: Option[Kid] = None
+    var algSeen = false
 
     if !in.isNextToken('{') then in.decodeError("expected '{'")
     if !in.isNextToken('}') then
@@ -90,8 +117,7 @@ given JsonValueCodec[JoseHeader]:
           if algSeen then in.duplicatedKeyError(key.length)
           algSeen = true
           val algStr = in.readString("")
-          if algStr.isEmpty || algStr == "none" then
-            in.decodeError("algorithm 'none' is not permitted")
+          if algStr.isEmpty || algStr == "none" then in.decodeError("algorithm 'none' is not permitted")
           else
             algorithmFromString(algStr) match
               case Some(a) => alg = a
@@ -103,11 +129,15 @@ given JsonValueCodec[JoseHeader]:
             case Right(k) => kid = Some(k)
             case Left(e)  => in.decodeError(e.getMessage)
         else in.skip()
+        end if
         in.isNextToken(',')
       do ()
+      end while
+    end if
 
     if !algSeen then in.decodeError("missing required field: alg")
     JoseHeader(alg.asInstanceOf[Algorithm], typ, cty, kid)
+  end decodeValue
 
   override def encodeValue(x: JoseHeader, out: JsonWriter): Unit =
     out.writeObjectStart()
@@ -126,18 +156,20 @@ given JsonValueCodec[JoseHeader]:
       out.writeVal(k.unwrap)
     }
     out.writeObjectEnd()
+  end encodeValue
 
   override def nullValue: JoseHeader = null.asInstanceOf[JoseHeader]
+end given
 
 given JsonValueCodec[RegisteredClaims]:
   override def decodeValue(in: JsonReader, default: RegisteredClaims): RegisteredClaims =
-    var iss: Option[String]      = None
-    var sub: Option[String]      = None
-    var aud: Option[Audience]    = None
+    var iss: Option[String] = None
+    var sub: Option[String] = None
+    var aud: Option[Audience] = None
     var exp: Option[NumericDate] = None
     var nbf: Option[NumericDate] = None
     var iat: Option[NumericDate] = None
-    var jti: Option[String]      = None
+    var jti: Option[String] = None
 
     if !in.isNextToken('{') then in.decodeError("expected '{'")
     if !in.isNextToken('}') then
@@ -159,10 +191,14 @@ given JsonValueCodec[RegisteredClaims]:
         else if key == "iat" then iat = readOptionalNumericDate(in)
         else if key == "jti" then jti = readOptionalString(in)
         else in.skip()
+        end if
         in.isNextToken(',')
       do ()
+      end while
+    end if
 
     RegisteredClaims(iss, sub, aud, exp, nbf, iat, jti)
+  end decodeValue
 
   override def encodeValue(x: RegisteredClaims, out: JsonWriter): Unit =
     out.writeObjectStart()
@@ -195,8 +231,10 @@ given JsonValueCodec[RegisteredClaims]:
       out.writeVal(v)
     }
     out.writeObjectEnd()
+  end encodeValue
 
   override def nullValue: RegisteredClaims = null.asInstanceOf[RegisteredClaims]
+end given
 
 // -- Shared helpers --
 
@@ -244,3 +282,11 @@ private def algorithmFromString(s: String): Option[Algorithm] =
 
 private def algorithmToString(alg: Algorithm): String =
   algorithmToStringMap(alg)
+
+/** Derive a [[JwtCodec]] from an available [[JsonValueCodec]]. */
+given [A] => (jvc: JsonValueCodec[A]) => JwtCodec[A]:
+  inline def decode(bytes: Array[Byte]): Either[Throwable, A] =
+    Try(readFromArray[A](bytes)).toEither
+
+  inline def encode(value: A): Array[Byte] =
+    writeToArray[A](value)

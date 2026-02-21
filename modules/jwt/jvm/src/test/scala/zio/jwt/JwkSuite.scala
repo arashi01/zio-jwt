@@ -1,16 +1,39 @@
+/*
+ * Copyright (c) 2026 Ali Rashid.
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining a copy of
+ * this software and associated documentation files (the "Software"), to deal in
+ * the Software without restriction, including without limitation the rights to
+ * use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of
+ * the Software, and to permit persons to whom the Software is furnished to do so,
+ * subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in all
+ * copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS
+ * FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR
+ * COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER
+ * IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
+ * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+ */
 package zio.jwt
 
 import java.math.BigInteger
 import java.security.KeyFactory
 import java.security.KeyPairGenerator
-import java.security.interfaces.ECPublicKey as JcaEcPublicKey
 import java.security.interfaces.ECPrivateKey as JcaEcPrivateKey
-import java.security.interfaces.RSAPublicKey as JcaRsaPublicKey
+import java.security.interfaces.ECPublicKey as JcaEcPublicKey
 import java.security.interfaces.RSAPrivateCrtKey as JcaRsaPrivateCrtKey
+import java.security.interfaces.RSAPublicKey as JcaRsaPublicKey
 import java.security.spec.ECGenParameterSpec
 import java.security.spec.RSAPublicKeySpec
 import javax.crypto.KeyGenerator
+
 import zio.Chunk
+
+// scalafix:off DisableSyntax.asInstanceOf, DisableSyntax.isInstanceOf; JCA KeyPair returns java.security.Key requiring type-narrowing casts
 
 class JwkSuite extends munit.FunSuite:
 
@@ -195,7 +218,10 @@ class JwkSuite extends munit.FunSuite:
   test("toPublicKey fails for SymmetricKey") {
     val jwk = Jwk.SymmetricKey(
       k = Base64UrlString.fromUnsafe("dGVzdA"),
-      use = None, keyOps = None, alg = None, kid = None
+      use = None,
+      keyOps = None,
+      alg = None,
+      kid = None
     )
     assert(jwk.toPublicKey.isLeft)
   }
@@ -217,7 +243,10 @@ class JwkSuite extends munit.FunSuite:
   test("toPrivateKey fails for SymmetricKey") {
     val jwk = Jwk.SymmetricKey(
       k = Base64UrlString.fromUnsafe("dGVzdA"),
-      use = None, keyOps = None, alg = None, kid = None
+      use = None,
+      keyOps = None,
+      alg = None,
+      kid = None
     )
     assert(jwk.toPrivateKey.isLeft)
   }
@@ -237,7 +266,9 @@ class JwkSuite extends munit.FunSuite:
       x = Base64UrlString.fromUnsafe("dGVzdA"),
       y = Base64UrlString.fromUnsafe("dGVzdA"),
       use = Some(KeyUse.Sig),
-      keyOps = None, alg = None, kid = None
+      keyOps = None,
+      alg = None,
+      kid = None
     )
     assertEquals(ecJwk.keyUse, Some(KeyUse.Sig))
 
@@ -245,13 +276,18 @@ class JwkSuite extends munit.FunSuite:
       n = Base64UrlString.fromUnsafe("dGVzdA"),
       e = Base64UrlString.fromUnsafe("AQAB"),
       use = Some(KeyUse.Enc),
-      keyOps = None, alg = None, kid = None
+      keyOps = None,
+      alg = None,
+      kid = None
     )
     assertEquals(rsaJwk.keyUse, Some(KeyUse.Enc))
 
     val symJwk = Jwk.SymmetricKey(
       k = Base64UrlString.fromUnsafe("dGVzdA"),
-      use = None, keyOps = None, alg = None, kid = None
+      use = None,
+      keyOps = None,
+      alg = None,
+      kid = None
     )
     assertEquals(symJwk.keyUse, None)
   }
@@ -262,7 +298,10 @@ class JwkSuite extends munit.FunSuite:
       crv = EcCurve.P384,
       x = Base64UrlString.fromUnsafe("dGVzdA"),
       y = Base64UrlString.fromUnsafe("dGVzdA"),
-      use = None, keyOps = Some(ops), alg = None, kid = None
+      use = None,
+      keyOps = Some(ops),
+      alg = None,
+      kid = None
     )
     assertEquals(jwk.keyOperations, Some(ops))
   }
@@ -270,7 +309,10 @@ class JwkSuite extends munit.FunSuite:
   test("keyAlgorithm returns alg for all variants") {
     val jwk = Jwk.SymmetricKey(
       k = Base64UrlString.fromUnsafe("dGVzdA"),
-      use = None, keyOps = None, alg = Some(Algorithm.HS256), kid = None
+      use = None,
+      keyOps = None,
+      alg = Some(Algorithm.HS256),
+      kid = None
     )
     assertEquals(jwk.keyAlgorithm, Some(Algorithm.HS256))
   }
@@ -280,7 +322,10 @@ class JwkSuite extends munit.FunSuite:
     val jwk = Jwk.RsaPublicKey(
       n = Base64UrlString.fromUnsafe("dGVzdA"),
       e = Base64UrlString.fromUnsafe("AQAB"),
-      use = None, keyOps = None, alg = None, kid = Some(kid)
+      use = None,
+      keyOps = None,
+      alg = None,
+      kid = Some(kid)
     )
     assertEquals(jwk.keyId, Some(kid))
   }
@@ -292,7 +337,10 @@ class JwkSuite extends munit.FunSuite:
       crv = EcCurve.P256,
       x = Base64UrlString.fromUnsafe("dGVzdA"),
       y = Base64UrlString.fromUnsafe("dGVzdA"),
-      use = None, keyOps = None, alg = None, kid = None
+      use = None,
+      keyOps = None,
+      alg = None,
+      kid = None
     )
     assert(jwk.suitableForVerification(Algorithm.ES256))
   }
@@ -302,7 +350,10 @@ class JwkSuite extends munit.FunSuite:
       crv = EcCurve.P256,
       x = Base64UrlString.fromUnsafe("dGVzdA"),
       y = Base64UrlString.fromUnsafe("dGVzdA"),
-      use = Some(KeyUse.Sig), keyOps = None, alg = None, kid = None
+      use = Some(KeyUse.Sig),
+      keyOps = None,
+      alg = None,
+      kid = None
     )
     assert(jwk.suitableForVerification(Algorithm.ES256))
   }
@@ -312,7 +363,10 @@ class JwkSuite extends munit.FunSuite:
       crv = EcCurve.P256,
       x = Base64UrlString.fromUnsafe("dGVzdA"),
       y = Base64UrlString.fromUnsafe("dGVzdA"),
-      use = Some(KeyUse.Enc), keyOps = None, alg = None, kid = None
+      use = Some(KeyUse.Enc),
+      keyOps = None,
+      alg = None,
+      kid = None
     )
     assert(!jwk.suitableForVerification(Algorithm.ES256))
   }
@@ -322,7 +376,10 @@ class JwkSuite extends munit.FunSuite:
       crv = EcCurve.P256,
       x = Base64UrlString.fromUnsafe("dGVzdA"),
       y = Base64UrlString.fromUnsafe("dGVzdA"),
-      use = None, keyOps = Some(Chunk(KeyOp.Verify)), alg = None, kid = None
+      use = None,
+      keyOps = Some(Chunk(KeyOp.Verify)),
+      alg = None,
+      kid = None
     )
     assert(jwk.suitableForVerification(Algorithm.ES256))
   }
@@ -332,7 +389,10 @@ class JwkSuite extends munit.FunSuite:
       crv = EcCurve.P256,
       x = Base64UrlString.fromUnsafe("dGVzdA"),
       y = Base64UrlString.fromUnsafe("dGVzdA"),
-      use = None, keyOps = Some(Chunk(KeyOp.Sign)), alg = None, kid = None
+      use = None,
+      keyOps = Some(Chunk(KeyOp.Sign)),
+      alg = None,
+      kid = None
     )
     assert(!jwk.suitableForVerification(Algorithm.ES256))
   }
@@ -342,7 +402,10 @@ class JwkSuite extends munit.FunSuite:
       crv = EcCurve.P256,
       x = Base64UrlString.fromUnsafe("dGVzdA"),
       y = Base64UrlString.fromUnsafe("dGVzdA"),
-      use = None, keyOps = None, alg = Some(Algorithm.ES256), kid = None
+      use = None,
+      keyOps = None,
+      alg = Some(Algorithm.ES256),
+      kid = None
     )
     assert(jwk.suitableForVerification(Algorithm.ES256))
   }
@@ -352,7 +415,10 @@ class JwkSuite extends munit.FunSuite:
       crv = EcCurve.P256,
       x = Base64UrlString.fromUnsafe("dGVzdA"),
       y = Base64UrlString.fromUnsafe("dGVzdA"),
-      use = None, keyOps = None, alg = Some(Algorithm.ES384), kid = None
+      use = None,
+      keyOps = None,
+      alg = Some(Algorithm.ES384),
+      kid = None
     )
     assert(!jwk.suitableForVerification(Algorithm.ES256))
   }
@@ -363,7 +429,10 @@ class JwkSuite extends munit.FunSuite:
       x = Base64UrlString.fromUnsafe("dGVzdA"),
       y = Base64UrlString.fromUnsafe("dGVzdA"),
       d = Base64UrlString.fromUnsafe("dGVzdA"),
-      use = Some(KeyUse.Sig), keyOps = Some(Chunk(KeyOp.Sign)), alg = Some(Algorithm.ES256), kid = None
+      use = Some(KeyUse.Sig),
+      keyOps = Some(Chunk(KeyOp.Sign)),
+      alg = Some(Algorithm.ES256),
+      kid = None
     )
     assert(jwk.suitableForSigning(Algorithm.ES256))
   }
@@ -373,7 +442,10 @@ class JwkSuite extends munit.FunSuite:
       crv = EcCurve.P256,
       x = Base64UrlString.fromUnsafe("dGVzdA"),
       y = Base64UrlString.fromUnsafe("dGVzdA"),
-      use = None, keyOps = None, alg = None, kid = None
+      use = None,
+      keyOps = None,
+      alg = None,
+      kid = None
     )
     // Companion alias (non-curried)
     assert(Jwk.suitableForVerification(jwk, Algorithm.ES256))
@@ -387,7 +459,10 @@ class JwkSuite extends munit.FunSuite:
       crv = EcCurve.P256,
       x = Base64UrlString.fromUnsafe("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"),
       y = Base64UrlString.fromUnsafe("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"),
-      use = None, keyOps = None, alg = None, kid = None
+      use = None,
+      keyOps = None,
+      alg = None,
+      kid = None
     )
     val result = jwk.toPublicKey
     assert(result.isLeft)
@@ -398,11 +473,18 @@ class JwkSuite extends munit.FunSuite:
   test("Jwk derives CanEqual") {
     val a: Jwk = Jwk.SymmetricKey(
       k = Base64UrlString.fromUnsafe("dGVzdA"),
-      use = None, keyOps = None, alg = None, kid = None
+      use = None,
+      keyOps = None,
+      alg = None,
+      kid = None
     )
     val b: Jwk = Jwk.SymmetricKey(
       k = Base64UrlString.fromUnsafe("dGVzdA"),
-      use = None, keyOps = None, alg = None, kid = None
+      use = None,
+      keyOps = None,
+      alg = None,
+      kid = None
     )
     assertEquals(a, b)
   }
+end JwkSuite

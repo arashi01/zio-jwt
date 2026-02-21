@@ -1,3 +1,23 @@
+/*
+ * Copyright (c) 2026 Ali Rashid.
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining a copy of
+ * this software and associated documentation files (the "Software"), to deal in
+ * the Software without restriction, including without limitation the rights to
+ * use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of
+ * the Software, and to permit persons to whom the Software is furnished to do so,
+ * subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in all
+ * copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS
+ * FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR
+ * COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER
+ * IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
+ * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+ */
 package zio.jwt
 
 import java.nio.charset.StandardCharsets
@@ -7,13 +27,12 @@ import java.security.interfaces.ECPublicKey as JcaEcPublicKey
 import java.security.spec.ECGenParameterSpec
 import javax.crypto.KeyGenerator
 
-import munit.ZSuite
-
 import zio.NonEmptyChunk
 import zio.ZIO
 import zio.ZLayer
 
 import boilerplate.unwrap
+import munit.ZSuite
 
 import zio.jwt.jsoniter.given
 
@@ -67,7 +86,8 @@ class JwtIssuerSuite extends ZSuite:
     val keySource = KeySource.static(jwk)
     val issuerConfig = JwtIssuerConfig(Algorithm.HS256, Some(Kid.fromUnsafe("k1")), None, None)
     val claims = RegisteredClaims(Some("test-issuer"), None, None, None, None, None, None)
-    ZIO.serviceWithZIO[JwtIssuer](_.issue[Unit]((), claims))
+    ZIO
+      .serviceWithZIO[JwtIssuer](_.issue[Unit]((), claims))
       .map { token =>
         val raw = token.unwrap
         assertEquals(raw.count(_ == '.'), 2)
@@ -83,7 +103,7 @@ class JwtIssuerSuite extends ZSuite:
     val layer = issuerLayer(issuerConfig, keySource) ++ validatorLayer(validConfig(Algorithm.HS256), keySource)
     (for
       token <- ZIO.serviceWithZIO[JwtIssuer](_.issue[Unit]((), claims))
-      jwt   <- ZIO.serviceWithZIO[JwtValidator](_.validate[Unit](token))
+      jwt <- ZIO.serviceWithZIO[JwtValidator](_.validate[Unit](token))
     yield
       assertEquals(jwt.header.alg, Algorithm.HS256)
       assertEquals(jwt.registeredClaims.iss, Some("roundtrip-iss"))
@@ -103,7 +123,7 @@ class JwtIssuerSuite extends ZSuite:
     val layer = issuerLayer(issuerConfig, signingSource) ++ validatorLayer(validConfig(Algorithm.RS256), verifySource)
     (for
       token <- ZIO.serviceWithZIO[JwtIssuer](_.issue[Unit]((), claims))
-      jwt   <- ZIO.serviceWithZIO[JwtValidator](_.validate[Unit](token))
+      jwt <- ZIO.serviceWithZIO[JwtValidator](_.validate[Unit](token))
     yield
       assertEquals(jwt.header.alg, Algorithm.RS256)
       assertEquals(jwt.registeredClaims.sub, Some("rsa-user"))
@@ -113,8 +133,8 @@ class JwtIssuerSuite extends ZSuite:
   // -- EC issue and round-trip --
 
   testZ("ECDSA ES256 issue-then-validate round-trip") {
-    val pub = ec256KeyPair.getPublic.asInstanceOf[JcaEcPublicKey]
-    val priv = ec256KeyPair.getPrivate.asInstanceOf[JcaEcPrivateKey]
+    val pub = ec256KeyPair.getPublic.asInstanceOf[JcaEcPublicKey] // scalafix:ok DisableSyntax.asInstanceOf; JCA KeyPair type narrowing
+    val priv = ec256KeyPair.getPrivate.asInstanceOf[JcaEcPrivateKey] // scalafix:ok DisableSyntax.asInstanceOf; JCA KeyPair type narrowing
     val pubJwk = Jwk.from(pub, Some(Kid.fromUnsafe("ec1"))).toOption.get
     val privJwk = Jwk.from(priv, pub, Some(Kid.fromUnsafe("ec1"))).toOption.get
     val signingSource = KeySource.static(privJwk)
@@ -124,7 +144,7 @@ class JwtIssuerSuite extends ZSuite:
     val layer = issuerLayer(issuerConfig, signingSource) ++ validatorLayer(validConfig(Algorithm.ES256), verifySource)
     (for
       token <- ZIO.serviceWithZIO[JwtIssuer](_.issue[Unit]((), claims))
-      jwt   <- ZIO.serviceWithZIO[JwtValidator](_.validate[Unit](token))
+      jwt <- ZIO.serviceWithZIO[JwtValidator](_.validate[Unit](token))
     yield
       assertEquals(jwt.header.alg, Algorithm.ES256)
       assertEquals(jwt.registeredClaims.sub, Some("ec-user"))
@@ -150,7 +170,7 @@ class JwtIssuerSuite extends ZSuite:
     val layer = issuerLayer(issuerConfig, keySource) ++ validatorLayer(config, keySource)
     (for
       token <- ZIO.serviceWithZIO[JwtIssuer](_.issue[Unit]((), claims))
-      jwt   <- ZIO.serviceWithZIO[JwtValidator](_.validate[Unit](token))
+      jwt <- ZIO.serviceWithZIO[JwtValidator](_.validate[Unit](token))
     yield
       assertEquals(jwt.header.typ, Some("JWT"))
       assertEquals(jwt.registeredClaims.iss, Some("my-service"))
@@ -174,7 +194,7 @@ class JwtIssuerSuite extends ZSuite:
     val layer = issuerLayer(issuerConfig, keySource) ++ validatorLayer(config, keySource)
     (for
       token <- ZIO.serviceWithZIO[JwtIssuer](_.issue[Unit]((), claims))
-      jwt   <- ZIO.serviceWithZIO[JwtValidator](_.validate[Unit](token))
+      jwt <- ZIO.serviceWithZIO[JwtValidator](_.validate[Unit](token))
     yield
       assertEquals(jwt.header.alg, Algorithm.HS256)
       assertEquals(jwt.header.typ, Some("JWT"))
@@ -182,3 +202,4 @@ class JwtIssuerSuite extends ZSuite:
       assertEquals(jwt.header.kid, Some(Kid.fromUnsafe("cfg-kid")))
     ).provide(layer)
   }
+end JwtIssuerSuite

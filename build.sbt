@@ -187,7 +187,7 @@ def unitTestSettings: List[Setting[?]] = List(
     libraries.munit.value % Test,
     libraries.`munit-scalacheck`.value % Test,
     libraries.`scala-java-time`.value % Test,
-    libraries.`munit-zio`.value % Test,
+    libraries.`munit-zio`.value % Test
   ),
   testFrameworks += new TestFramework("munit.Framework")
 )

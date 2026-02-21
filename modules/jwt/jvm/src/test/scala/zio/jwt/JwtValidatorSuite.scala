@@ -1,3 +1,23 @@
+/*
+ * Copyright (c) 2026 Ali Rashid.
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining a copy of
+ * this software and associated documentation files (the "Software"), to deal in
+ * the Software without restriction, including without limitation the rights to
+ * use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of
+ * the Software, and to permit persons to whom the Software is furnished to do so,
+ * subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in all
+ * copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS
+ * FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR
+ * COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER
+ * IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
+ * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+ */
 package zio.jwt
 
 import java.nio.charset.StandardCharsets
@@ -8,13 +28,12 @@ import java.time.Duration
 import java.time.Instant
 import javax.crypto.KeyGenerator
 
-import munit.ZSuite
-
 import zio.NonEmptyChunk
 import zio.ZIO
 import zio.ZLayer
 
 import boilerplate.unwrap
+import munit.ZSuite
 
 import zio.jwt.crypto.SignatureEngine
 import zio.jwt.jsoniter.given
@@ -48,9 +67,9 @@ class JwtValidatorSuite extends ZSuite:
   // -- Token construction helper --
 
   private def createToken(
-      header: JoseHeader,
-      claims: RegisteredClaims,
-      signFn: Array[Byte] => Either[JwtError, Array[Byte]]
+    header: JoseHeader,
+    claims: RegisteredClaims,
+    signFn: Array[Byte] => Either[JwtError, Array[Byte]]
   ): Either[JwtError, TokenString] =
     import scala.language.unsafeNulls
     val encoder = java.util.Base64.getUrlEncoder.withoutPadding()
@@ -64,6 +83,7 @@ class JwtValidatorSuite extends ZSuite:
       sigB64 = encoder.encodeToString(sig)
       token <- TokenString.from(s"$headerB64.$payloadB64.$sigB64").left.map(e => JwtError.MalformedToken(e))
     yield token
+  end createToken
 
   private def validConfig(allowedAlgs: NonEmptyChunk[Algorithm]): ValidationConfig =
     ValidationConfig(
@@ -86,7 +106,8 @@ class JwtValidatorSuite extends ZSuite:
     val claims = RegisteredClaims(None, Some("test"), None, None, None, None, None)
     val token = createToken(header, claims, data => SignatureEngine.sign(data, hmac256Key, Algorithm.HS256))
     val config = validConfig(NonEmptyChunk(Algorithm.HS256))
-    ZIO.serviceWithZIO[JwtValidator](_.validate[Unit](token.toOption.get))
+    ZIO
+      .serviceWithZIO[JwtValidator](_.validate[Unit](token.toOption.get))
       .map { jwt =>
         assertEquals(jwt.header.alg, Algorithm.HS256)
         assertEquals(jwt.registeredClaims.sub, Some("test"))
@@ -103,7 +124,8 @@ class JwtValidatorSuite extends ZSuite:
     val claims = RegisteredClaims(None, Some("rsa-test"), None, None, None, None, None)
     val token = createToken(header, claims, data => SignatureEngine.sign(data, rsaKeyPair.getPrivate, Algorithm.RS256))
     val config = validConfig(NonEmptyChunk(Algorithm.RS256))
-    ZIO.serviceWithZIO[JwtValidator](_.validate[Unit](token.toOption.get))
+    ZIO
+      .serviceWithZIO[JwtValidator](_.validate[Unit](token.toOption.get))
       .map(jwt => assertEquals(jwt.registeredClaims.sub, Some("rsa-test")))
       .provide(validatorLayer(config, keySource))
   }
@@ -111,14 +133,15 @@ class JwtValidatorSuite extends ZSuite:
   // -- EC validation --
 
   testZ("validates a valid ECDSA ES256 token") {
-    val pub = ec256KeyPair.getPublic.asInstanceOf[JcaEcPublicKey]
+    val pub = ec256KeyPair.getPublic.asInstanceOf[JcaEcPublicKey] // scalafix:ok DisableSyntax.asInstanceOf; JCA KeyPair type narrowing
     val jwk = Jwk.from(pub, Some(Kid.fromUnsafe("ec1"))).toOption.get
     val keySource = KeySource.static(jwk)
     val header = JoseHeader(Algorithm.ES256, None, None, Some(Kid.fromUnsafe("ec1")))
     val claims = RegisteredClaims(None, Some("ec-test"), None, None, None, None, None)
     val token = createToken(header, claims, data => SignatureEngine.sign(data, ec256KeyPair.getPrivate, Algorithm.ES256))
     val config = validConfig(NonEmptyChunk(Algorithm.ES256))
-    ZIO.serviceWithZIO[JwtValidator](_.validate[Unit](token.toOption.get))
+    ZIO
+      .serviceWithZIO[JwtValidator](_.validate[Unit](token.toOption.get))
       .map(jwt => assertEquals(jwt.registeredClaims.sub, Some("ec-test")))
       .provide(validatorLayer(config, keySource))
   }
@@ -132,13 +155,14 @@ class JwtValidatorSuite extends ZSuite:
     val claims = RegisteredClaims(None, None, None, Some(NumericDate.fromEpochSecond(0L)), None, None, None)
     val token = createToken(header, claims, data => SignatureEngine.sign(data, hmac256Key, Algorithm.HS256))
     val config = validConfig(NonEmptyChunk(Algorithm.HS256))
-    ZIO.serviceWithZIO[JwtValidator](_.validate[Unit](token.toOption.get))
+    ZIO
+      .serviceWithZIO[JwtValidator](_.validate[Unit](token.toOption.get))
       .either
       .map { result =>
         assert(result.isLeft)
         result.swap.toOption.get match
           case JwtError.Expired(_, _) => ()
-          case other => fail(s"Expected Expired, got $other")
+          case other                  => fail(s"Expected Expired, got $other")
       }
       .provide(validatorLayer(config, keySource))
   }
@@ -152,13 +176,14 @@ class JwtValidatorSuite extends ZSuite:
     val claims = RegisteredClaims(None, None, None, None, Some(NumericDate.fromEpochSecond(9999999999L)), None, None)
     val token = createToken(header, claims, data => SignatureEngine.sign(data, hmac256Key, Algorithm.HS256))
     val config = validConfig(NonEmptyChunk(Algorithm.HS256))
-    ZIO.serviceWithZIO[JwtValidator](_.validate[Unit](token.toOption.get))
+    ZIO
+      .serviceWithZIO[JwtValidator](_.validate[Unit](token.toOption.get))
       .either
       .map { result =>
         assert(result.isLeft)
         result.swap.toOption.get match
           case JwtError.NotYetValid(_, _) => ()
-          case other => fail(s"Expected NotYetValid, got $other")
+          case other                      => fail(s"Expected NotYetValid, got $other")
       }
       .provide(validatorLayer(config, keySource))
   }
@@ -179,7 +204,8 @@ class JwtValidatorSuite extends ZSuite:
       requiredTyp = None,
       allowedAlgorithms = NonEmptyChunk(Algorithm.HS256)
     )
-    ZIO.serviceWithZIO[JwtValidator](_.validate[Unit](token.toOption.get))
+    ZIO
+      .serviceWithZIO[JwtValidator](_.validate[Unit](token.toOption.get))
       .map(_ => ())
       .provide(validatorLayer(config, keySource))
   }
@@ -193,7 +219,8 @@ class JwtValidatorSuite extends ZSuite:
     val claims = RegisteredClaims(Some("wrong-issuer"), None, None, None, None, None, None)
     val token = createToken(header, claims, data => SignatureEngine.sign(data, hmac256Key, Algorithm.HS256))
     val config = validConfig(NonEmptyChunk(Algorithm.HS256)).copy(requiredIssuer = Some("expected-issuer"))
-    ZIO.serviceWithZIO[JwtValidator](_.validate[Unit](token.toOption.get))
+    ZIO
+      .serviceWithZIO[JwtValidator](_.validate[Unit](token.toOption.get))
       .either
       .map { result =>
         assert(result.isLeft)
@@ -214,13 +241,14 @@ class JwtValidatorSuite extends ZSuite:
     val claims = RegisteredClaims(None, None, None, None, None, None, None)
     val token = createToken(header, claims, data => SignatureEngine.sign(data, hmac256Key, Algorithm.HS256))
     val config = validConfig(NonEmptyChunk(Algorithm.HS256)).copy(requiredIssuer = Some("expected-issuer"))
-    ZIO.serviceWithZIO[JwtValidator](_.validate[Unit](token.toOption.get))
+    ZIO
+      .serviceWithZIO[JwtValidator](_.validate[Unit](token.toOption.get))
       .either
       .map { result =>
         assert(result.isLeft)
         result.swap.toOption.get match
           case JwtError.InvalidIssuer(_, actual) => assertEquals(actual, None)
-          case other => fail(s"Expected InvalidIssuer, got $other")
+          case other                             => fail(s"Expected InvalidIssuer, got $other")
       }
       .provide(validatorLayer(config, keySource))
   }
@@ -234,7 +262,8 @@ class JwtValidatorSuite extends ZSuite:
     val claims = RegisteredClaims(None, None, Some(Audience("wrong-aud")), None, None, None, None)
     val token = createToken(header, claims, data => SignatureEngine.sign(data, hmac256Key, Algorithm.HS256))
     val config = validConfig(NonEmptyChunk(Algorithm.HS256)).copy(requiredAudience = Some("expected-aud"))
-    ZIO.serviceWithZIO[JwtValidator](_.validate[Unit](token.toOption.get))
+    ZIO
+      .serviceWithZIO[JwtValidator](_.validate[Unit](token.toOption.get))
       .either
       .map { result =>
         assert(result.isLeft)
@@ -256,13 +285,14 @@ class JwtValidatorSuite extends ZSuite:
     val token = createToken(header, claims, data => SignatureEngine.sign(data, hmac256Key, Algorithm.HS256))
     // Only allow RS256, not HS256
     val config = validConfig(NonEmptyChunk(Algorithm.RS256))
-    ZIO.serviceWithZIO[JwtValidator](_.validate[Unit](token.toOption.get))
+    ZIO
+      .serviceWithZIO[JwtValidator](_.validate[Unit](token.toOption.get))
       .either
       .map { result =>
         assert(result.isLeft)
         result.swap.toOption.get match
           case JwtError.UnsupportedAlgorithm(_) => ()
-          case other => fail(s"Expected UnsupportedAlgorithm, got $other")
+          case other                            => fail(s"Expected UnsupportedAlgorithm, got $other")
       }
       .provide(validatorLayer(config, keySource))
   }
@@ -281,7 +311,8 @@ class JwtValidatorSuite extends ZSuite:
     val tampered = raw.substring(0, lastDot + 1) + "AAAA" + raw.substring(lastDot + 5)
     val tamperedToken = TokenString.from(tampered).toOption.get
     val config = validConfig(NonEmptyChunk(Algorithm.HS256))
-    ZIO.serviceWithZIO[JwtValidator](_.validate[Unit](tamperedToken))
+    ZIO
+      .serviceWithZIO[JwtValidator](_.validate[Unit](tamperedToken))
       .either
       .map(result => assert(result.isLeft))
       .provide(validatorLayer(config, keySource))
@@ -296,7 +327,8 @@ class JwtValidatorSuite extends ZSuite:
     val claims = RegisteredClaims(Some("correct-issuer"), None, None, None, None, None, None)
     val token = createToken(header, claims, data => SignatureEngine.sign(data, hmac256Key, Algorithm.HS256))
     val config = validConfig(NonEmptyChunk(Algorithm.HS256)).copy(requiredIssuer = Some("correct-issuer"))
-    ZIO.serviceWithZIO[JwtValidator](_.validate[Unit](token.toOption.get))
+    ZIO
+      .serviceWithZIO[JwtValidator](_.validate[Unit](token.toOption.get))
       .map(jwt => assertEquals(jwt.registeredClaims.iss, Some("correct-issuer")))
       .provide(validatorLayer(config, keySource))
   }
@@ -310,7 +342,8 @@ class JwtValidatorSuite extends ZSuite:
     val claims = RegisteredClaims(None, None, Some(Audience("correct-aud")), None, None, None, None)
     val token = createToken(header, claims, data => SignatureEngine.sign(data, hmac256Key, Algorithm.HS256))
     val config = validConfig(NonEmptyChunk(Algorithm.HS256)).copy(requiredAudience = Some("correct-aud"))
-    ZIO.serviceWithZIO[JwtValidator](_.validate[Unit](token.toOption.get))
+    ZIO
+      .serviceWithZIO[JwtValidator](_.validate[Unit](token.toOption.get))
       .map(jwt => assert(jwt.registeredClaims.aud.exists(_.contains("correct-aud"))))
       .provide(validatorLayer(config, keySource))
   }
@@ -324,13 +357,14 @@ class JwtValidatorSuite extends ZSuite:
     val claims = RegisteredClaims(None, None, None, None, None, None, None)
     val token = createToken(header, claims, data => SignatureEngine.sign(data, hmac256Key, Algorithm.HS256))
     val config = validConfig(NonEmptyChunk(Algorithm.HS256)).copy(requiredTyp = Some("JWT"))
-    ZIO.serviceWithZIO[JwtValidator](_.validate[Unit](token.toOption.get))
+    ZIO
+      .serviceWithZIO[JwtValidator](_.validate[Unit](token.toOption.get))
       .either
       .map { result =>
         assert(result.isLeft)
         result.swap.toOption.get match
           case JwtError.MalformedToken(_) => ()
-          case other => fail(s"Expected MalformedToken for typ mismatch, got $other")
+          case other                      => fail(s"Expected MalformedToken for typ mismatch, got $other")
       }
       .provide(validatorLayer(config, keySource))
   }
@@ -342,7 +376,9 @@ class JwtValidatorSuite extends ZSuite:
     val claims = RegisteredClaims(None, None, None, None, None, None, None)
     val token = createToken(header, claims, data => SignatureEngine.sign(data, hmac256Key, Algorithm.HS256))
     val config = validConfig(NonEmptyChunk(Algorithm.HS256)).copy(requiredTyp = Some("JWT"))
-    ZIO.serviceWithZIO[JwtValidator](_.validate[Unit](token.toOption.get))
+    ZIO
+      .serviceWithZIO[JwtValidator](_.validate[Unit](token.toOption.get))
       .map(jwt => assertEquals(jwt.header.typ, Some("JWT")))
       .provide(validatorLayer(config, keySource))
   }
+end JwtValidatorSuite

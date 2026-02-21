@@ -1,3 +1,23 @@
+/*
+ * Copyright (c) 2026 Ali Rashid.
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining a copy of
+ * this software and associated documentation files (the "Software"), to deal in
+ * the Software without restriction, including without limitation the rights to
+ * use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of
+ * the Software, and to permit persons to whom the Software is furnished to do so,
+ * subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in all
+ * copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS
+ * FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR
+ * COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER
+ * IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
+ * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+ */
 package zio.jwt
 
 import java.time.Instant
@@ -44,18 +64,18 @@ class JwtErrorSuite extends munit.FunSuite:
 
   test("MalformedToken getMessage wraps cause message") {
     val cause = RuntimeException("unexpected EOF")
-    val err   = JwtError.MalformedToken(cause)
+    val err = JwtError.MalformedToken(cause)
     assert(err.getMessage.contains("unexpected EOF"))
   }
 
   test("MalformedToken getCause returns wrapped throwable") {
     val cause = RuntimeException("parse failure")
-    val err   = JwtError.MalformedToken(cause)
+    val err = JwtError.MalformedToken(cause)
     assertEquals(err.getCause, cause)
   }
 
   test("non-MalformedToken getCause returns null") {
-    assertEquals(JwtError.InvalidSignature.getCause, null)
+    assertEquals(JwtError.InvalidSignature.getCause, null) // scalafix:ok DisableSyntax.null; testing JDK getCause contract
   }
 
   test("UnsupportedAlgorithm getMessage includes algorithm name") {
@@ -77,3 +97,4 @@ class JwtErrorSuite extends munit.FunSuite:
     val err = JwtError.InvalidSignature
     assertEquals(err.getStackTrace.length, 0)
   }
+end JwtErrorSuite

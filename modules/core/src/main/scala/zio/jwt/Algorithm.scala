@@ -1,6 +1,24 @@
+/*
+ * Copyright (c) 2026 Ali Rashid.
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining a copy of
+ * this software and associated documentation files (the "Software"), to deal in
+ * the Software without restriction, including without limitation the rights to
+ * use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of
+ * the Software, and to permit persons to whom the Software is furnished to do so,
+ * subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in all
+ * copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS
+ * FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR
+ * COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER
+ * IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
+ * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+ */
 package zio.jwt
-
-import scala.annotation.targetName
 
 /** Algorithm family grouping for key-type dispatch. */
 enum AlgorithmFamily derives CanEqual:
@@ -22,7 +40,6 @@ object Algorithm:
   extension (alg: Algorithm)
 
     /** JCA algorithm name for [[java.security.Signature]] or [[javax.crypto.Mac]]. */
-    @targetName("algorithmJcaName")
     def jcaName: String = alg match
       case Algorithm.HS256 => "HmacSHA256"
       case Algorithm.HS384 => "HmacSHA384"
@@ -38,7 +55,6 @@ object Algorithm:
       case Algorithm.PS512 => "RSASSA-PSS"
 
     /** Algorithm family for key-type dispatch. */
-    @targetName("algorithmFamily")
     def family: AlgorithmFamily = alg match
       case Algorithm.HS256 | Algorithm.HS384 | Algorithm.HS512 => AlgorithmFamily.HMAC
       case Algorithm.RS256 | Algorithm.RS384 | Algorithm.RS512 => AlgorithmFamily.RSA
@@ -46,9 +62,10 @@ object Algorithm:
       case Algorithm.PS256 | Algorithm.PS384 | Algorithm.PS512 => AlgorithmFamily.RSAPSS
 
     /** ECDSA curve for this algorithm, if applicable. */
-    @targetName("algorithmCurve")
     def curve: Option[EcCurve] = alg match
       case Algorithm.ES256 => Some(EcCurve.P256)
       case Algorithm.ES384 => Some(EcCurve.P384)
       case Algorithm.ES512 => Some(EcCurve.P521)
       case _               => None
+  end extension
+end Algorithm

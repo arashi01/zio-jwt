@@ -1,3 +1,23 @@
+/*
+ * Copyright (c) 2026 Ali Rashid.
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining a copy of
+ * this software and associated documentation files (the "Software"), to deal in
+ * the Software without restriction, including without limitation the rights to
+ * use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of
+ * the Software, and to permit persons to whom the Software is furnished to do so,
+ * subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in all
+ * copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS
+ * FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR
+ * COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER
+ * IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
+ * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+ */
 package zio.jwt.crypto
 
 import scala.util.Try
@@ -14,10 +34,11 @@ object EcdsaCodec:
     case Algorithm.ES512 => Some(132)
     case _               => None
 
-  /**
-   * Transcodes a DER-encoded ECDSA signature to fixed-length R||S concatenation.
-   * Adapted from jwt-scala's `transcodeSignatureToConcat`.
-   */
+  // scalafix:off DisableSyntax.throw, DisableSyntax.var, DisableSyntax.while; performance-critical DER<->R||S byte manipulation
+
+  /** Transcodes a DER-encoded ECDSA signature to fixed-length R||S concatenation. Adapted from
+    * jwt-scala's `transcodeSignatureToConcat`.
+    */
   def derToConcat(der: Array[Byte], outputLength: Int): Either[JwtError, Array[Byte]] =
     Try {
       require(der.length >= 8 && der(0) == 0x30.toByte, "Invalid DER: too short or missing SEQUENCE tag")
@@ -56,16 +77,15 @@ object EcdsaCodec:
         sEffLen -= 1
 
       val componentLen = outputLength / 2
-      val result       = new Array[Byte](outputLength)
+      val result = new Array[Byte](outputLength)
       System.arraycopy(der, rStart, result, componentLen - rEffLen, rEffLen)
       System.arraycopy(der, sStart, result, outputLength - sEffLen, sEffLen)
       result
     }.toEither.left.map(_ => JwtError.InvalidSignature)
 
-  /**
-   * Transcodes a fixed-length R||S concatenated ECDSA signature to DER encoding.
-   * Adapted from jwt-scala's `transcodeSignatureToDER`.
-   */
+  /** Transcodes a fixed-length R||S concatenated ECDSA signature to DER encoding. Adapted from
+    * jwt-scala's `transcodeSignatureToDER`.
+    */
   def concatToDer(sig: Array[Byte]): Either[JwtError, Array[Byte]] =
     Try {
       val mid = sig.length / 2
@@ -77,9 +97,9 @@ object EcdsaCodec:
 
       // Build DER SEQUENCE
       val useLongForm = contentLen >= 128
-      val headerLen   = if useLongForm then 3 else 2
-      val result      = new Array[Byte](headerLen + contentLen)
-      var pos         = 0
+      val headerLen = if useLongForm then 3 else 2
+      val result = new Array[Byte](headerLen + contentLen)
+      var pos = 0
 
       // SEQUENCE tag + length
       result(pos) = 0x30.toByte; pos += 1
@@ -119,3 +139,6 @@ object EcdsaCodec:
       val out = new Array[Byte](len)
       System.arraycopy(sig, start, out, 0, len)
       out
+    end if
+  end toSignedInteger
+end EcdsaCodec

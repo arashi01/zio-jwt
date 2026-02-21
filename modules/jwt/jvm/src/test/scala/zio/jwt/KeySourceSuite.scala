@@ -1,3 +1,23 @@
+/*
+ * Copyright (c) 2026 Ali Rashid.
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining a copy of
+ * this software and associated documentation files (the "Software"), to deal in
+ * the Software without restriction, including without limitation the rights to
+ * use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of
+ * the Software, and to permit persons to whom the Software is furnished to do so,
+ * subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in all
+ * copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS
+ * FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR
+ * COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER
+ * IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
+ * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+ */
 package zio.jwt
 
 import java.security.KeyPairGenerator
@@ -5,9 +25,9 @@ import java.security.interfaces.ECPublicKey as JcaEcPublicKey
 import java.security.spec.ECGenParameterSpec
 import javax.crypto.KeyGenerator
 
-import munit.ZSuite
-
 import zio.Chunk
+
+import munit.ZSuite
 
 class KeySourceSuite extends ZSuite:
 
@@ -25,8 +45,8 @@ class KeySourceSuite extends ZSuite:
 
   private def ecJwk(kid: Option[Kid], alg: Option[Algorithm], use: Option[KeyUse], keyOps: Option[Chunk[KeyOp]]): Jwk =
     val kp = generateEcKeyPair("secp256r1")
-    val pub = kp.getPublic.asInstanceOf[JcaEcPublicKey]
-    val base = Jwk.from(pub, kid).toOption.get.asInstanceOf[Jwk.EcPublicKey]
+    val pub = kp.getPublic.asInstanceOf[JcaEcPublicKey] // scalafix:ok DisableSyntax.asInstanceOf; JCA KeyPair type narrowing
+    val base = Jwk.from(pub, kid).toOption.get.asInstanceOf[Jwk.EcPublicKey] // scalafix:ok DisableSyntax.asInstanceOf; JWK variant narrowing
     base.copy(alg = alg, use = use, keyOps = keyOps)
 
   // -- Static factory --
@@ -51,7 +71,7 @@ class KeySourceSuite extends ZSuite:
     val key2 = ecJwk(Some(Kid.fromUnsafe("k2")), None, None, None)
     val source = KeySource.static(Chunk(key1, key2))
     val header = JoseHeader(alg = Algorithm.ES256, typ = None, cty = None, kid = Some(Kid.fromUnsafe("k2")))
-    source.resolvePublicKey(header).map(k => assert(k != null))
+    source.resolvePublicKey(header).map(k => assert(k != null)) // scalafix:ok DisableSyntax.null; asserting JCA key resolved
   }
 
   testZ("resolvePublicKey fails with KeyNotFound for missing kid") {
@@ -73,7 +93,7 @@ class KeySourceSuite extends ZSuite:
     val key = ecJwk(None, None, None, None)
     val source = KeySource.static(key)
     val header = JoseHeader(alg = Algorithm.ES256, typ = None, cty = None, kid = None)
-    source.resolvePublicKey(header).map(k => assert(k != null))
+    source.resolvePublicKey(header).map(k => assert(k != null)) // scalafix:ok DisableSyntax.null; asserting JCA key resolved
   }
 
   testZ("resolvePublicKey fails when no kid and multiple keys match") {
@@ -85,7 +105,7 @@ class KeySourceSuite extends ZSuite:
       assert(result.isLeft)
       result.swap.toOption.get match
         case JwtError.KeyNotFound(None) => () // expected
-        case other => fail(s"Expected KeyNotFound(None), got $other")
+        case other                      => fail(s"Expected KeyNotFound(None), got $other")
     }
   }
 
@@ -96,7 +116,7 @@ class KeySourceSuite extends ZSuite:
       assert(result.isLeft)
       result.swap.toOption.get match
         case JwtError.KeyNotFound(_) => () // expected
-        case other => fail(s"Expected KeyNotFound, got $other")
+        case other                   => fail(s"Expected KeyNotFound, got $other")
     }
   }
 
@@ -169,3 +189,4 @@ class KeySourceSuite extends ZSuite:
     val header = JoseHeader(alg = Algorithm.ES256, typ = None, cty = None, kid = None)
     KeySource.resolvePublicKey(source, header).map(_ => ())
   }
+end KeySourceSuite
