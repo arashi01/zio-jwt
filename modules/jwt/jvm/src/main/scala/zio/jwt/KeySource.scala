@@ -34,51 +34,57 @@ object KeySource:
   /** Creates a [[KeySource]] backed by a single key. */
   def static(jwk: Jwk): KeySource = static(Chunk(jwk))
 
-  // -- Key resolution (ss9.3) --
+  // -- Verification-oriented resolution (ss9.3) --
 
-  /**
-   * Resolves a public key from the source matching the given header.
-   * Filters by use/key_ops/alg (ss8.5), matches kid, then converts to JCA key.
-   */
+  /** Resolves a public key suitable for verification matching the given header. */
   def resolvePublicKey(source: KeySource, header: JoseHeader): IO[JwtError, PublicKey] =
     source.resolvePublicKey(header)
 
-  /**
-   * Resolves a private key from the source matching the given header.
-   * Filters by use/key_ops/alg (ss8.5), matches kid, then converts to JCA key.
-   */
-  def resolvePrivateKey(source: KeySource, header: JoseHeader): IO[JwtError, PrivateKey] =
-    source.resolvePrivateKey(header)
-
-  /**
-   * Resolves a secret key from the source matching the given header.
-   * Filters by use/key_ops/alg (ss8.5), matches kid, then converts to JCA key.
-   */
+  /** Resolves a secret key suitable for verification matching the given header. */
   def resolveSecretKey(source: KeySource, header: JoseHeader): IO[JwtError, SecretKey] =
     source.resolveSecretKey(header)
 
+  // -- Signing-oriented resolution --
+
+  /** Resolves a private key suitable for signing matching the given header. */
+  def resolveSigningPrivateKey(source: KeySource, header: JoseHeader): IO[JwtError, PrivateKey] =
+    source.resolveSigningPrivateKey(header)
+
+  /** Resolves a secret key suitable for signing matching the given header. */
+  def resolveSigningSecretKey(source: KeySource, header: JoseHeader): IO[JwtError, SecretKey] =
+    source.resolveSigningSecretKey(header)
+
   extension (source: KeySource)
 
-    /** Resolves a public key matching the given header (ss9.3). */
+    /** Resolves a public key suitable for verification (ss9.3). */
     @targetName("keySourceResolvePublicKey")
     def resolvePublicKey(header: JoseHeader): IO[JwtError, PublicKey] =
-      resolveJwk(source, header).flatMap(jwk => ZIO.fromEither(jwk.toPublicKey))
+      resolveJwk(source, header, _.suitableForVerification(header.alg))
+        .flatMap(jwk => ZIO.fromEither(jwk.toPublicKey))
 
-    /** Resolves a private key matching the given header (ss9.3). */
-    @targetName("keySourceResolvePrivateKey")
-    def resolvePrivateKey(header: JoseHeader): IO[JwtError, PrivateKey] =
-      resolveJwk(source, header).flatMap(jwk => ZIO.fromEither(jwk.toPrivateKey))
-
-    /** Resolves a secret key matching the given header (ss9.3). */
+    /** Resolves a secret key suitable for verification (ss9.3). */
     @targetName("keySourceResolveSecretKey")
     def resolveSecretKey(header: JoseHeader): IO[JwtError, SecretKey] =
-      resolveJwk(source, header).flatMap(jwk => ZIO.fromEither(jwk.toSecretKey))
+      resolveJwk(source, header, _.suitableForVerification(header.alg))
+        .flatMap(jwk => ZIO.fromEither(jwk.toSecretKey))
+
+    /** Resolves a private key suitable for signing. */
+    @targetName("keySourceResolveSigningPrivateKey")
+    def resolveSigningPrivateKey(header: JoseHeader): IO[JwtError, PrivateKey] =
+      resolveJwk(source, header, _.suitableForSigning(header.alg))
+        .flatMap(jwk => ZIO.fromEither(jwk.toPrivateKey))
+
+    /** Resolves a secret key suitable for signing. */
+    @targetName("keySourceResolveSigningSecretKey")
+    def resolveSigningSecretKey(header: JoseHeader): IO[JwtError, SecretKey] =
+      resolveJwk(source, header, _.suitableForSigning(header.alg))
+        .flatMap(jwk => ZIO.fromEither(jwk.toSecretKey))
 
   // -- Internal resolution logic --
 
-  private def resolveJwk(source: KeySource, header: JoseHeader): IO[JwtError, Jwk] =
+  private def resolveJwk(source: KeySource, header: JoseHeader, suitability: Jwk => Boolean): IO[JwtError, Jwk] =
     source.keys.flatMap { allKeys =>
-      val filtered = allKeys.filter(_.suitableForVerification(header.alg))
+      val filtered = allKeys.filter(suitability)
 
       val selected = header.kid match
         case Some(headerKid) =>

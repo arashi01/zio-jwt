@@ -51,28 +51,6 @@ val `zio-jwt-core` =
     .jsSettings(libraryDependencies += libraries.`scala-java-time`.value % Provided)
     .nativeSettings(libraryDependencies += libraries.`scala-java-time`.value % Provided)
 
-val `zio-jwt` =
-  crossProject(JVMPlatform)
-    .withoutSuffixFor(JVMPlatform)
-    .crossType(CrossType.Full)
-    .in(file("modules/jwt"))
-    .dependsOn(`zio-jwt-core`)
-    .settings(compilerSettings)
-    .settings(unitTestSettings)
-    .settings(fileHeaderSettings)
-    .settings(publishSettings)
-
-
-val `zio-http-jwt` =
-  project
-    .in(file("modules/zio-http"))
-    .dependsOn(`zio-jwt`.jvm)
-    .settings(compilerSettings)
-    .settings(unitTestSettings)
-    .settings(fileHeaderSettings)
-    .settings(publishSettings)
-    .settings(libraryDependencies += libraries.`zio-http`.value)
-
 val `zio-jwt-jsoniter` =
   crossProject(JVMPlatform, JSPlatform, NativePlatform)
     .withoutSuffixFor(JVMPlatform)
@@ -86,6 +64,27 @@ val `zio-jwt-jsoniter` =
     .nativeSettings(nativeSettings)
     .settings(libraryDependencies += libraries.`jsoniter-scala-core`.value)
     .settings(libraryDependencies += libraries.`jsoniter-scala-macros`.value % Provided)
+
+val `zio-jwt` =
+  crossProject(JVMPlatform)
+    .withoutSuffixFor(JVMPlatform)
+    .crossType(CrossType.Full)
+    .in(file("modules/jwt"))
+    .dependsOn(`zio-jwt-core`, `zio-jwt-jsoniter` % Test)
+    .settings(compilerSettings)
+    .settings(unitTestSettings)
+    .settings(fileHeaderSettings)
+    .settings(publishSettings)
+
+val `zio-http-jwt` =
+  project
+    .in(file("modules/zio-http"))
+    .dependsOn(`zio-jwt`.jvm)
+    .settings(compilerSettings)
+    .settings(unitTestSettings)
+    .settings(fileHeaderSettings)
+    .settings(publishSettings)
+    .settings(libraryDependencies += libraries.`zio-http`.value)
 
 val `zio-jwt-jvm` =
   project
