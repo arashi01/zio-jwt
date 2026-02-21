@@ -65,38 +65,3 @@ class AudienceSuite extends munit.FunSuite:
     assert(!aud.contains("d"))
   }
 end AudienceSuite
-"apply(NonEmptyChunk) with one element creates Single") {
-    Audience(NonEmptyChunk("only")) match
-      case _: Audience.Single => ()
-      case other              => fail(s"Expected Audience.Single, got $other")
-  }
-
-  test("apply(NonEmptyChunk) with multiple elements creates Many") {
-    Audience(NonEmptyChunk("a", "b")) match
-      case _: Audience.Many => ()
-      case other            => fail(s"Expected Audience.Many, got $other")
-  }
-
-  test("values returns NonEmptyChunk for Single") {
-    val aud = Audience("one")
-    assertEquals(aud.values, NonEmptyChunk("one"))
-  }
-
-  test("values returns original chunk for Many") {
-    val expected = NonEmptyChunk("x", "y", "z")
-    val aud = Audience(expected)
-    assertEquals(aud.values, expected)
-  }
-
-  test("contains finds matching audience in Single") {
-    val aud = Audience("target")
-    assert(aud.contains("target"))
-    assert(!aud.contains("other"))
-  }
-
-  test("contains finds matching audience in Many") {
-    val aud = Audience(NonEmptyChunk("a", "b", "c"))
-    assert(aud.contains("b"))
-    assert(!aud.contains("d"))
-  }
-end AudienceSuite
