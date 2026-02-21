@@ -44,6 +44,10 @@ val `zio-jwt-core` =
     .nativeSettings(nativeSettings)
     .settings(libraryDependencies += libraries.boilerplate.value)
     .settings(libraryDependencies += libraries.zio.value)
+    .jvmSettings(
+      Compile / unmanagedSourceDirectories += baseDirectory.value.getParentFile / "jvm" / "src" / "main" / "scala",
+      Test / unmanagedSourceDirectories += baseDirectory.value.getParentFile / "jvm" / "src" / "test" / "scala"
+    )
     .jsSettings(libraryDependencies += libraries.`scala-java-time`.value % Provided)
     .nativeSettings(libraryDependencies += libraries.`scala-java-time`.value % Provided)
 

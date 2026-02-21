@@ -44,3 +44,11 @@ object Algorithm:
       case Algorithm.RS256 | Algorithm.RS384 | Algorithm.RS512 => AlgorithmFamily.RSA
       case Algorithm.ES256 | Algorithm.ES384 | Algorithm.ES512 => AlgorithmFamily.EC
       case Algorithm.PS256 | Algorithm.PS384 | Algorithm.PS512 => AlgorithmFamily.RSAPSS
+
+    /** ECDSA curve for this algorithm, if applicable. */
+    @targetName("algorithmCurve")
+    def curve: Option[EcCurve] = alg match
+      case Algorithm.ES256 => Some(EcCurve.P256)
+      case Algorithm.ES384 => Some(EcCurve.P384)
+      case Algorithm.ES512 => Some(EcCurve.P521)
+      case _               => None
