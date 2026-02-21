@@ -15,8 +15,7 @@ import zio.ZLayer
 
 import boilerplate.unwrap
 
-import zio.jwt.jsoniter.JwtCodecInstances.given
-import zio.jwt.jsoniter.codecs.given
+import zio.jwt.jsoniter.given
 
 class JwtIssuerSuite extends ZSuite:
 

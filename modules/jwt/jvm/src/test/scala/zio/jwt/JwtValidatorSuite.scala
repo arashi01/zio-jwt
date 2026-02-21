@@ -17,8 +17,7 @@ import zio.ZLayer
 import boilerplate.unwrap
 
 import zio.jwt.crypto.SignatureEngine
-import zio.jwt.jsoniter.JwtCodecInstances.given
-import zio.jwt.jsoniter.codecs.given
+import zio.jwt.jsoniter.given
 
 class JwtValidatorSuite extends ZSuite:
 

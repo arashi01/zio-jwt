@@ -79,7 +79,7 @@ val `zio-jwt` =
 val `zio-http-jwt` =
   project
     .in(file("modules/zio-http"))
-    .dependsOn(`zio-jwt`.jvm)
+    .dependsOn(`zio-jwt`.jvm, `zio-jwt-jsoniter`.jvm)
     .settings(compilerSettings)
     .settings(unitTestSettings)
     .settings(fileHeaderSettings)

@@ -5,8 +5,6 @@ import com.github.plokhotnyuk.jsoniter_scala.core.*
 import zio.NonEmptyChunk
 import zio.jwt.*
 
-import codecs.given
-
 class NumericDateCodecSuite extends munit.FunSuite:
 
   test("round-trips epoch seconds") {
@@ -227,8 +225,6 @@ class RegisteredClaimsCodecSuite extends munit.FunSuite:
   }
 
 class JwtCodecBridgeSuite extends munit.FunSuite:
-
-  import JwtCodecInstances.given
 
   test("JwtCodec bridge decodes JoseHeader") {
     val codec = summon[JwtCodec[JoseHeader]]
