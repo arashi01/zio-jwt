@@ -34,28 +34,38 @@ import zio.jwt.*
 given JsonValueCodec[EcCurve]:
   override def decodeValue(in: JsonReader, default: EcCurve): EcCurve =
     val s = in.readString("")
-    s match
-      case "P-256" => EcCurve.P256
-      case "P-384" => EcCurve.P384
-      case "P-521" => EcCurve.P521
-      case _       => in.decodeError(s"unsupported EC curve: $s")
+    EcCurve.fromString(s) match
+      case Some(crv) => crv
+      case None      => in.decodeError(s"unsupported EC curve: $s")
 
   override def encodeValue(x: EcCurve, out: JsonWriter): Unit =
-    out.writeVal(ecCurveToString(x))
+    out.writeVal(x.name)
 
   override def nullValue: EcCurve = null.asInstanceOf[EcCurve]
+end given
+
+given JsonValueCodec[OkpCurve]:
+  override def decodeValue(in: JsonReader, default: OkpCurve): OkpCurve =
+    val s = in.readString("")
+    OkpCurve.fromString(s) match
+      case Some(crv) => crv
+      case None      => in.decodeError(s"unsupported OKP curve: $s")
+
+  override def encodeValue(x: OkpCurve, out: JsonWriter): Unit =
+    out.writeVal(x.name)
+
+  override def nullValue: OkpCurve = null.asInstanceOf[OkpCurve]
 end given
 
 given JsonValueCodec[KeyUse]:
   override def decodeValue(in: JsonReader, default: KeyUse): KeyUse =
     val s = in.readString("")
-    s match
-      case "sig" => KeyUse.Sig
-      case "enc" => KeyUse.Enc
-      case _     => in.decodeError(s"unsupported key use: $s")
+    KeyUse.fromString(s) match
+      case Some(u) => u
+      case None    => in.decodeError(s"unsupported key use: $s")
 
   override def encodeValue(x: KeyUse, out: JsonWriter): Unit =
-    out.writeVal(keyUseToString(x))
+    out.writeVal(x.name)
 
   override def nullValue: KeyUse = null.asInstanceOf[KeyUse]
 end given
@@ -63,12 +73,12 @@ end given
 given JsonValueCodec[KeyOp]:
   override def decodeValue(in: JsonReader, default: KeyOp): KeyOp =
     val s = in.readString("")
-    stringToKeyOp.get(s) match
+    KeyOp.fromString(s) match
       case Some(op) => op
       case None     => in.decodeError(s"unsupported key operation: $s")
 
   override def encodeValue(x: KeyOp, out: JsonWriter): Unit =
-    out.writeVal(keyOpToStringMap(x))
+    out.writeVal(x.name)
 
   override def nullValue: KeyOp = null.asInstanceOf[KeyOp]
 
@@ -87,6 +97,8 @@ given JsonValueCodec[Jwk]:
     var kid: Option[Kid] = None
     // EC fields
     var crv: EcCurve | Null = null
+    var okpCrv: OkpCurve | Null = null
+    var crvRaw: String | Null = null
     var x: String | Null = null
     var y: String | Null = null
     // EC/RSA private
@@ -113,7 +125,7 @@ given JsonValueCodec[Jwk]:
           Kid.from(in.readString("")) match
             case Right(v)  => kid = Some(v)
             case Left(err) => in.decodeError(err.getMessage)
-        case "crv" => crv = summon[JsonValueCodec[EcCurve]].decodeValue(in, null.asInstanceOf[EcCurve])
+        case "crv" => crvRaw = in.readString("")
         case "x"   => x = in.readString("")
         case "y"   => y = in.readString("")
         case "d"   => d = in.readString("")
@@ -133,9 +145,14 @@ given JsonValueCodec[Jwk]:
 
     if kty == null then in.decodeError("missing required field: kty")
     kty match
-      case "EC"  => buildEcKey(in, crv, x, y, d, use, keyOps, alg, kid)
+      case "EC" =>
+        if crvRaw != null then crv = EcCurve.fromString(crvRaw.nn).getOrElse(in.decodeError(s"unsupported EC curve: $crvRaw"))
+        buildEcKey(in, crv, x, y, d, use, keyOps, alg, kid)
       case "RSA" => buildRsaKey(in, n, e, d, p, q, dp, dq, qi, use, keyOps, alg, kid)
       case "oct" => buildSymmetricKey(in, k, use, keyOps, alg, kid)
+      case "OKP" =>
+        if crvRaw != null then okpCrv = OkpCurve.fromString(crvRaw.nn).getOrElse(in.decodeError(s"unsupported OKP curve: $crvRaw"))
+        buildOkpKey(in, okpCrv, x, d, use, keyOps, alg, kid)
       case other => in.decodeError(s"unsupported key type: $other")
   end decodeValue
 
@@ -175,6 +192,17 @@ given JsonValueCodec[Jwk]:
         out.writeKey("kty"); out.writeVal("oct")
         out.writeKey("k"); out.writeVal(sym.k.unwrap)
         writeCommonFields(sym.use, sym.keyOps, sym.alg, sym.kid, out)
+      case okp: Jwk.OkpPublicKey =>
+        out.writeKey("kty"); out.writeVal("OKP")
+        out.writeKey("crv"); out.writeVal(okp.crv.name)
+        out.writeKey("x"); out.writeVal(okp.x.unwrap)
+        writeCommonFields(okp.use, okp.keyOps, okp.alg, okp.kid, out)
+      case okp: Jwk.OkpPrivateKey =>
+        out.writeKey("kty"); out.writeVal("OKP")
+        out.writeKey("crv"); out.writeVal(okp.crv.name)
+        out.writeKey("x"); out.writeVal(okp.x.unwrap)
+        out.writeKey("d"); out.writeVal(okp.d.unwrap)
+        writeCommonFields(okp.use, okp.keyOps, okp.alg, okp.kid, out)
     end match
     out.writeObjectEnd()
   end encodeValue
@@ -211,52 +239,11 @@ end given
 
 // -- Shared helpers --
 
-private def ecCurveToString(crv: EcCurve): String = crv match
-  case EcCurve.P256 => "P-256"
-  case EcCurve.P384 => "P-384"
-  case EcCurve.P521 => "P-521"
-
-private def keyUseToString(u: KeyUse): String = u match
-  case KeyUse.Sig => "sig"
-  case KeyUse.Enc => "enc"
-
-private val keyOpNames: Array[(String, KeyOp)] = Array(
-  "sign" -> KeyOp.Sign,
-  "verify" -> KeyOp.Verify,
-  "encrypt" -> KeyOp.Encrypt,
-  "decrypt" -> KeyOp.Decrypt,
-  "wrapKey" -> KeyOp.WrapKey,
-  "unwrapKey" -> KeyOp.UnwrapKey,
-  "deriveKey" -> KeyOp.DeriveKey,
-  "deriveBits" -> KeyOp.DeriveBits
-)
-
-private val stringToKeyOp: Map[String, KeyOp] = keyOpNames.toMap
-private val keyOpToStringMap: Map[KeyOp, String] = keyOpNames.map((s, o) => o -> s).toMap
-
-private val algorithmNames: Array[(String, Algorithm)] = Array(
-  "HS256" -> Algorithm.HS256,
-  "HS384" -> Algorithm.HS384,
-  "HS512" -> Algorithm.HS512,
-  "RS256" -> Algorithm.RS256,
-  "RS384" -> Algorithm.RS384,
-  "RS512" -> Algorithm.RS512,
-  "ES256" -> Algorithm.ES256,
-  "ES384" -> Algorithm.ES384,
-  "ES512" -> Algorithm.ES512,
-  "PS256" -> Algorithm.PS256,
-  "PS384" -> Algorithm.PS384,
-  "PS512" -> Algorithm.PS512
-)
-
-private val stringToAlgorithm: Map[String, Algorithm] = algorithmNames.toMap
-private val algorithmToStringMap: Map[Algorithm, String] = algorithmNames.map((s, a) => a -> s).toMap
-
 private def readOptionalAlgorithm(in: JsonReader): Option[Algorithm] =
   val s = in.readString("")
   if s.isEmpty then None
   else
-    stringToAlgorithm.get(s) match
+    Algorithm.fromString(s) match
       case Some(a) => Some(a)
       case None    => in.decodeError(s"unsupported algorithm: $s")
 
@@ -297,16 +284,16 @@ private def writeCommonFields(
   out: JsonWriter
 ): Unit =
   use.foreach { u =>
-    out.writeKey("use"); out.writeVal(keyUseToString(u))
+    out.writeKey("use"); out.writeVal(u.name)
   }
   keyOps.foreach { ops =>
     out.writeKey("key_ops")
     out.writeArrayStart()
-    ops.foreach(op => out.writeVal(keyOpToStringMap(op)))
+    ops.foreach(op => out.writeVal(op.name))
     out.writeArrayEnd()
   }
   alg.foreach { a =>
-    out.writeKey("alg"); out.writeVal(algorithmToStringMap(a))
+    out.writeKey("alg"); out.writeVal(a.name)
   }
   kid.foreach { k =>
     out.writeKey("kid"); out.writeVal(k.unwrap)
@@ -380,3 +367,22 @@ private def buildSymmetricKey(
 ): Jwk =
   val kB64 = requireB64(in, k, "k")
   Jwk.SymmetricKey(kB64, use, keyOps, alg, kid)
+
+private def buildOkpKey(
+  in: JsonReader,
+  crv: OkpCurve | Null,
+  x: String | Null,
+  d: String | Null,
+  use: Option[KeyUse],
+  keyOps: Option[Chunk[KeyOp]],
+  alg: Option[Algorithm],
+  kid: Option[Kid]
+): Jwk =
+  import scala.language.unsafeNulls
+  if crv == null then in.decodeError("missing required field: crv for OKP key")
+  val xB64 = requireB64(in, x, "x")
+  if d != null then
+    val dB64 = requireB64(in, d, "d")
+    Jwk.OkpPrivateKey(crv, xB64, dB64, use, keyOps, alg, kid)
+  else Jwk.OkpPublicKey(crv, xB64, use, keyOps, alg, kid)
+end buildOkpKey

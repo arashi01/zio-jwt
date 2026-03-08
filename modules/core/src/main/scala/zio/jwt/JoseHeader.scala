@@ -20,9 +20,12 @@
  */
 package zio.jwt
 
+import zio.Chunk
+
 /** JOSE header parameters for JWT/JWS (RFC 7515 ss4). Includes standard parameters `alg`, `typ`,
-  * `cty`, `kid`, and X.509 certificate thumbprints `x5t` (SHA-1) and `x5t#S256` (SHA-256) for
-  * certificate-based key identification (e.g. Azure AD client assertions).
+  * `cty`, `kid`, X.509 certificate thumbprints `x5t` (SHA-1) and `x5t#S256` (SHA-256) for
+  * certificate-based key identification, and `crit` for critical header parameter indication (RFC
+  * 7515 ss4.1.11).
   */
 final case class JoseHeader(
   alg: Algorithm,
@@ -30,5 +33,6 @@ final case class JoseHeader(
   cty: Option[String],
   kid: Option[Kid],
   x5t: Option[Base64UrlString],
-  x5tS256: Option[Base64UrlString]
+  x5tS256: Option[Base64UrlString],
+  crit: Option[Chunk[String]]
 ) derives CanEqual

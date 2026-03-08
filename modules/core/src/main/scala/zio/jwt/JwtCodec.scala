@@ -20,7 +20,11 @@
  */
 package zio.jwt
 
-/** Codec abstraction for JWT header, claims, and domain types. */
+/** Codec abstraction for JWT header, claims, and domain types. Implementations serialise and
+  * deserialise `A` to/from raw bytes (typically UTF-8 JSON). Default instances for [[JoseHeader]]
+  * and [[RegisteredClaims]] are provided by the `zio-jwt-jsoniter` module; users supply an instance
+  * for their custom claims type `A`.
+  */
 trait JwtCodec[A]:
   def decode(bytes: Array[Byte]): Either[Throwable, A]
   def encode(value: A): Either[Throwable, Array[Byte]]

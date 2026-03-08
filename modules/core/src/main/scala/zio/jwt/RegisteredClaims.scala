@@ -20,7 +20,11 @@
  */
 package zio.jwt
 
-/** Registered claim names (RFC 7519 ss4.1). */
+/** Registered JWT claim names (RFC 7519 ss4.1). All fields are optional; omitted claims are not
+  * validated. `iss` is the issuer, `sub` the subject, `aud` the audience (single string or array),
+  * `exp` the expiration time, `nbf` the not-before time, `iat` the issued-at time, and `jti` the
+  * unique token identifier.
+  */
 final case class RegisteredClaims(
   iss: Option[String],
   sub: Option[String],

@@ -70,14 +70,22 @@ class KeySourceSuite extends ZSuite:
     val key1 = ecJwk(Some(Kid.fromUnsafe("k1")), None, None, None)
     val key2 = ecJwk(Some(Kid.fromUnsafe("k2")), None, None, None)
     val source = KeySource.static(Chunk(key1, key2))
-    val header = JoseHeader(alg = Algorithm.ES256, typ = None, cty = None, kid = Some(Kid.fromUnsafe("k2")), x5t = None, x5tS256 = None)
+    val header =
+      JoseHeader(alg = Algorithm.ES256, typ = None, cty = None, kid = Some(Kid.fromUnsafe("k2")), x5t = None, x5tS256 = None, crit = None)
     source.resolvePublicKey(header).map(k => assert(k != null)) // scalafix:ok DisableSyntax.null; asserting JCA key resolved
   }
 
   testZ("resolvePublicKey fails with KeyNotFound for missing kid") {
     val key1 = ecJwk(Some(Kid.fromUnsafe("k1")), None, None, None)
     val source = KeySource.static(key1)
-    val header = JoseHeader(alg = Algorithm.ES256, typ = None, cty = None, kid = Some(Kid.fromUnsafe("missing")), x5t = None, x5tS256 = None)
+    val header = JoseHeader(alg = Algorithm.ES256,
+                            typ = None,
+                            cty = None,
+                            kid = Some(Kid.fromUnsafe("missing")),
+                            x5t = None,
+                            x5tS256 = None,
+                            crit = None
+    )
     source.resolvePublicKey(header).either.map { result =>
       assert(result.isLeft)
       result.swap.toOption.get match
@@ -92,7 +100,7 @@ class KeySourceSuite extends ZSuite:
   testZ("resolvePublicKey succeeds when no kid and exactly one key matches") {
     val key = ecJwk(None, None, None, None)
     val source = KeySource.static(key)
-    val header = JoseHeader(alg = Algorithm.ES256, typ = None, cty = None, kid = None, x5t = None, x5tS256 = None)
+    val header = JoseHeader(alg = Algorithm.ES256, typ = None, cty = None, kid = None, x5t = None, x5tS256 = None, crit = None)
     source.resolvePublicKey(header).map(k => assert(k != null)) // scalafix:ok DisableSyntax.null; asserting JCA key resolved
   }
 
@@ -100,7 +108,7 @@ class KeySourceSuite extends ZSuite:
     val key1 = ecJwk(None, None, None, None)
     val key2 = ecJwk(None, None, None, None)
     val source = KeySource.static(Chunk(key1, key2))
-    val header = JoseHeader(alg = Algorithm.ES256, typ = None, cty = None, kid = None, x5t = None, x5tS256 = None)
+    val header = JoseHeader(alg = Algorithm.ES256, typ = None, cty = None, kid = None, x5t = None, x5tS256 = None, crit = None)
     source.resolvePublicKey(header).either.map { result =>
       assert(result.isLeft)
       result.swap.toOption.get match
@@ -112,7 +120,7 @@ class KeySourceSuite extends ZSuite:
 
   testZ("resolvePublicKey fails when no keys at all") {
     val source = KeySource.static(Chunk.empty[Jwk])
-    val header = JoseHeader(alg = Algorithm.ES256, typ = None, cty = None, kid = None, x5t = None, x5tS256 = None)
+    val header = JoseHeader(alg = Algorithm.ES256, typ = None, cty = None, kid = None, x5t = None, x5tS256 = None, crit = None)
     source.resolvePublicKey(header).either.map { result =>
       assert(result.isLeft)
       result.swap.toOption.get match
@@ -127,14 +135,16 @@ class KeySourceSuite extends ZSuite:
     val sigKey = ecJwk(Some(Kid.fromUnsafe("sig")), None, Some(KeyUse.Sig), None)
     val encKey = ecJwk(Some(Kid.fromUnsafe("enc")), None, Some(KeyUse.Enc), None)
     val source = KeySource.static(Chunk(sigKey, encKey))
-    val header = JoseHeader(alg = Algorithm.ES256, typ = None, cty = None, kid = Some(Kid.fromUnsafe("sig")), x5t = None, x5tS256 = None)
+    val header =
+      JoseHeader(alg = Algorithm.ES256, typ = None, cty = None, kid = Some(Kid.fromUnsafe("sig")), x5t = None, x5tS256 = None, crit = None)
     source.resolvePublicKey(header).map(_ => ())
   }
 
   testZ("resolvePublicKey rejects key with use=Enc") {
     val encKey = ecJwk(Some(Kid.fromUnsafe("enc")), None, Some(KeyUse.Enc), None)
     val source = KeySource.static(encKey)
-    val header = JoseHeader(alg = Algorithm.ES256, typ = None, cty = None, kid = Some(Kid.fromUnsafe("enc")), x5t = None, x5tS256 = None)
+    val header =
+      JoseHeader(alg = Algorithm.ES256, typ = None, cty = None, kid = Some(Kid.fromUnsafe("enc")), x5t = None, x5tS256 = None, crit = None)
     source.resolvePublicKey(header).either.map(r => assert(r.isLeft))
   }
 
@@ -144,14 +154,16 @@ class KeySourceSuite extends ZSuite:
     val verifyKey = ecJwk(Some(Kid.fromUnsafe("v")), None, None, Some(Chunk(KeyOp.Verify)))
     val signKey = ecJwk(Some(Kid.fromUnsafe("s")), None, None, Some(Chunk(KeyOp.Sign)))
     val source = KeySource.static(Chunk(verifyKey, signKey))
-    val header = JoseHeader(alg = Algorithm.ES256, typ = None, cty = None, kid = Some(Kid.fromUnsafe("v")), x5t = None, x5tS256 = None)
+    val header =
+      JoseHeader(alg = Algorithm.ES256, typ = None, cty = None, kid = Some(Kid.fromUnsafe("v")), x5t = None, x5tS256 = None, crit = None)
     source.resolvePublicKey(header).map(_ => ())
   }
 
   testZ("resolvePublicKey rejects key with key_ops=Sign only") {
     val signKey = ecJwk(Some(Kid.fromUnsafe("s")), None, None, Some(Chunk(KeyOp.Sign)))
     val source = KeySource.static(signKey)
-    val header = JoseHeader(alg = Algorithm.ES256, typ = None, cty = None, kid = Some(Kid.fromUnsafe("s")), x5t = None, x5tS256 = None)
+    val header =
+      JoseHeader(alg = Algorithm.ES256, typ = None, cty = None, kid = Some(Kid.fromUnsafe("s")), x5t = None, x5tS256 = None, crit = None)
     source.resolvePublicKey(header).either.map(r => assert(r.isLeft))
   }
 
@@ -161,14 +173,16 @@ class KeySourceSuite extends ZSuite:
     val es256Key = ecJwk(Some(Kid.fromUnsafe("k1")), Some(Algorithm.ES256), None, None)
     val es384Key = ecJwk(Some(Kid.fromUnsafe("k2")), Some(Algorithm.ES384), None, None)
     val source = KeySource.static(Chunk(es256Key, es384Key))
-    val header = JoseHeader(alg = Algorithm.ES256, typ = None, cty = None, kid = Some(Kid.fromUnsafe("k1")), x5t = None, x5tS256 = None)
+    val header =
+      JoseHeader(alg = Algorithm.ES256, typ = None, cty = None, kid = Some(Kid.fromUnsafe("k1")), x5t = None, x5tS256 = None, crit = None)
     source.resolvePublicKey(header).map(_ => ())
   }
 
   testZ("resolvePublicKey rejects key with mismatched alg") {
     val es384Key = ecJwk(Some(Kid.fromUnsafe("k1")), Some(Algorithm.ES384), None, None)
     val source = KeySource.static(es384Key)
-    val header = JoseHeader(alg = Algorithm.ES256, typ = None, cty = None, kid = Some(Kid.fromUnsafe("k1")), x5t = None, x5tS256 = None)
+    val header =
+      JoseHeader(alg = Algorithm.ES256, typ = None, cty = None, kid = Some(Kid.fromUnsafe("k1")), x5t = None, x5tS256 = None, crit = None)
     source.resolvePublicKey(header).either.map(r => assert(r.isLeft))
   }
 
@@ -178,7 +192,14 @@ class KeySourceSuite extends ZSuite:
     val hmacKey = generateHmacKey()
     val jwk = Jwk.from(hmacKey, Some(Kid.fromUnsafe("hmac-1"))).toOption.get
     val source = KeySource.static(jwk)
-    val header = JoseHeader(alg = Algorithm.HS256, typ = None, cty = None, kid = Some(Kid.fromUnsafe("hmac-1")), x5t = None, x5tS256 = None)
+    val header = JoseHeader(alg = Algorithm.HS256,
+                            typ = None,
+                            cty = None,
+                            kid = Some(Kid.fromUnsafe("hmac-1")),
+                            x5t = None,
+                            x5tS256 = None,
+                            crit = None
+    )
     source.resolveSecretKey(header).map(_ => ())
   }
 
@@ -187,7 +208,7 @@ class KeySourceSuite extends ZSuite:
   testZ("KeySource.resolvePublicKey companion alias works") {
     val key = ecJwk(None, None, None, None)
     val source = KeySource.static(key)
-    val header = JoseHeader(alg = Algorithm.ES256, typ = None, cty = None, kid = None, x5t = None, x5tS256 = None)
+    val header = JoseHeader(alg = Algorithm.ES256, typ = None, cty = None, kid = None, x5t = None, x5tS256 = None, crit = None)
     KeySource.resolvePublicKey(source, header).map(_ => ())
   }
 end KeySourceSuite

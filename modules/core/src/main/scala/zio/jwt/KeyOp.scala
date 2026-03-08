@@ -23,3 +23,29 @@ package zio.jwt
 /** JWK key operations parameter (RFC 7517 ss4.3). */
 enum KeyOp derives CanEqual:
   case Sign, Verify, Encrypt, Decrypt, WrapKey, UnwrapKey, DeriveKey, DeriveBits
+
+/** Companion for [[KeyOp]]. Provides wire-format name conversions. */
+object KeyOp:
+
+  /** All key operation names as (wire-format string, KeyOp) pairs. */
+  val names: Array[(String, KeyOp)] = Array(
+    "sign" -> KeyOp.Sign,
+    "verify" -> KeyOp.Verify,
+    "encrypt" -> KeyOp.Encrypt,
+    "decrypt" -> KeyOp.Decrypt,
+    "wrapKey" -> KeyOp.WrapKey,
+    "unwrapKey" -> KeyOp.UnwrapKey,
+    "deriveKey" -> KeyOp.DeriveKey,
+    "deriveBits" -> KeyOp.DeriveBits
+  )
+
+  private val stringToKeyOp: Map[String, KeyOp] = names.toMap
+  private val keyOpToString: Map[KeyOp, String] = names.map((s, o) => o -> s).toMap
+
+  /** Parses a key operation from its wire-format string (e.g. "sign", "verify"). */
+  def fromString(s: String): Option[KeyOp] = stringToKeyOp.get(s)
+
+  extension (op: KeyOp)
+    /** Wire-format name for JSON serialisation (e.g. "sign", "verify"). */
+    inline def name: String = keyOpToString(op)
+end KeyOp

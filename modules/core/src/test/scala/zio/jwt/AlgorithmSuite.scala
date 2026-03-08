@@ -70,7 +70,15 @@ class AlgorithmSuite extends munit.FunSuite:
     assertEquals(Algorithm.PS512.family, AlgorithmFamily.RSAPSS)
   }
 
-  test("all 12 algorithms are present") {
-    assertEquals(Algorithm.values.length, 12)
+  test("jcaName returns EdDSA for EdDSA algorithm") {
+    assertEquals(Algorithm.EdDSA.jcaName, "EdDSA")
+  }
+
+  test("family classifies EdDSA as OKP") {
+    assertEquals(Algorithm.EdDSA.family, AlgorithmFamily.OKP)
+  }
+
+  test("all 13 algorithms are present") {
+    assertEquals(Algorithm.values.length, 13)
   }
 end AlgorithmSuite

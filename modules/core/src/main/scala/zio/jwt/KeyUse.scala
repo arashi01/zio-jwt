@@ -23,3 +23,23 @@ package zio.jwt
 /** JWK public key use parameter (RFC 7517 ss4.2). */
 enum KeyUse derives CanEqual:
   case Sig, Enc
+
+/** Companion for [[KeyUse]]. Provides wire-format name conversions. */
+object KeyUse:
+
+  /** All key use names as (wire-format string, KeyUse) pairs. */
+  val names: Array[(String, KeyUse)] = Array(
+    "sig" -> KeyUse.Sig,
+    "enc" -> KeyUse.Enc
+  )
+
+  private val stringToKeyUse: Map[String, KeyUse] = names.toMap
+  private val keyUseToString: Map[KeyUse, String] = names.map((s, k) => k -> s).toMap
+
+  /** Parses a key use from its wire-format string (e.g. "sig", "enc"). */
+  def fromString(s: String): Option[KeyUse] = stringToKeyUse.get(s)
+
+  extension (use: KeyUse)
+    /** Wire-format name for JSON serialisation (e.g. "sig", "enc"). */
+    inline def name: String = keyUseToString(use)
+end KeyUse

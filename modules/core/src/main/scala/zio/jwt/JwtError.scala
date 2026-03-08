@@ -24,6 +24,8 @@ import java.time.Instant
 
 import scala.util.control.NoStackTrace
 
+import zio.Chunk
+
 import boilerplate.unwrap
 
 /** Validation and structural errors produced during JWT processing. Extends [[NoStackTrace]] --
@@ -70,6 +72,11 @@ enum JwtError extends Throwable with NoStackTrace derives CanEqual:
   /** A remote resource (e.g. JWKS endpoint) could not be fetched. */
   case FetchError(message: String)
 
+  /** The `crit` header lists parameters that this implementation does not understand (RFC 7515
+    * ss4.1.11).
+    */
+  case CriticalHeaderUnsupported(parameters: Chunk[String])
+
   override def getMessage: String = this match
     case Expired(exp, now) =>
       s"Token expired at ${exp.unwrap}, current time $now"
@@ -97,4 +104,6 @@ enum JwtError extends Throwable with NoStackTrace derives CanEqual:
       s"Ambiguous key${kid.fold("")(k => s" for kid '${k.unwrap}'")}: $count keys match"
     case FetchError(message) =>
       s"Fetch error: $message"
+    case CriticalHeaderUnsupported(parameters) =>
+      s"Unsupported critical header parameters: ${parameters.mkString(", ")}"
 end JwtError

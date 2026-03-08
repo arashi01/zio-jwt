@@ -26,11 +26,14 @@ import java.security.PrivateKey
 import java.security.PublicKey
 import java.security.interfaces.ECPrivateKey as JcaEcPrivateKey
 import java.security.interfaces.ECPublicKey as JcaEcPublicKey
+import java.security.interfaces.EdECPrivateKey as JcaEdEcPrivateKey
+import java.security.interfaces.EdECPublicKey as JcaEdEcPublicKey
 import java.security.interfaces.RSAPrivateCrtKey as JcaRsaPrivateCrtKey
 import java.security.interfaces.RSAPublicKey as JcaRsaPublicKey
 import java.security.spec.ECPoint
 import java.security.spec.ECPrivateKeySpec
 import java.security.spec.ECPublicKeySpec
+import java.security.spec.NamedParameterSpec
 import java.security.spec.RSAPrivateCrtKeySpec
 import java.security.spec.RSAPublicKeySpec
 import javax.crypto.SecretKey
@@ -95,6 +98,23 @@ enum Jwk derives CanEqual:
     alg: Option[Algorithm],
     kid: Option[Kid]
   )
+  case OkpPublicKey(
+    crv: OkpCurve,
+    x: Base64UrlString,
+    use: Option[KeyUse],
+    keyOps: Option[Chunk[KeyOp]],
+    alg: Option[Algorithm],
+    kid: Option[Kid]
+  )
+  case OkpPrivateKey(
+    crv: OkpCurve,
+    x: Base64UrlString,
+    d: Base64UrlString,
+    use: Option[KeyUse],
+    keyOps: Option[Chunk[KeyOp]],
+    alg: Option[Algorithm],
+    kid: Option[Kid]
+  )
 end Jwk
 
 /** Companion for [[Jwk]]. Provides JCA key conversion, factory methods, and filtering extensions. */
@@ -148,6 +168,8 @@ object Jwk:
       case ec: Jwk.EcPrivateKey   => ecToPublicKey(ec.crv, ec.x, ec.y)
       case rsa: Jwk.RsaPublicKey  => rsaToPublicKey(rsa.n, rsa.e)
       case rsa: Jwk.RsaPrivateKey => rsaToPublicKey(rsa.n, rsa.e)
+      case okp: Jwk.OkpPublicKey  => okpToPublicKey(okp.crv, okp.x)
+      case okp: Jwk.OkpPrivateKey => okpToPublicKey(okp.crv, okp.x)
       case _: Jwk.SymmetricKey    =>
         Left(JwtError.InvalidKey("Symmetric keys do not have a public key"))
 
@@ -155,10 +177,13 @@ object Jwk:
     def toPrivateKey: Either[JwtError, PrivateKey] = jwk match
       case ec: Jwk.EcPrivateKey   => ecToPrivateKey(ec.crv, ec.d)
       case rsa: Jwk.RsaPrivateKey => rsaToPrivateKey(rsa.n, rsa.e, rsa.d, rsa.p, rsa.q, rsa.dp, rsa.dq, rsa.qi)
+      case okp: Jwk.OkpPrivateKey => okpToPrivateKey(okp.crv, okp.d)
       case _: Jwk.EcPublicKey     =>
         Left(JwtError.InvalidKey("EC public key does not contain a private key"))
       case _: Jwk.RsaPublicKey =>
         Left(JwtError.InvalidKey("RSA public key does not contain a private key"))
+      case _: Jwk.OkpPublicKey =>
+        Left(JwtError.InvalidKey("OKP public key does not contain a private key"))
       case _: Jwk.SymmetricKey =>
         Left(JwtError.InvalidKey("Symmetric keys do not have a private key"))
 
@@ -191,6 +216,8 @@ object Jwk:
       case k: Jwk.RsaPublicKey  => k.use
       case k: Jwk.RsaPrivateKey => k.use
       case k: Jwk.SymmetricKey  => k.use
+      case k: Jwk.OkpPublicKey  => k.use
+      case k: Jwk.OkpPrivateKey => k.use
 
     /** The `key_ops` field, regardless of JWK variant. */
     def keyOperations: Option[Chunk[KeyOp]] = jwk match
@@ -199,6 +226,8 @@ object Jwk:
       case k: Jwk.RsaPublicKey  => k.keyOps
       case k: Jwk.RsaPrivateKey => k.keyOps
       case k: Jwk.SymmetricKey  => k.keyOps
+      case k: Jwk.OkpPublicKey  => k.keyOps
+      case k: Jwk.OkpPrivateKey => k.keyOps
 
     /** The `alg` field, regardless of JWK variant. */
     def keyAlgorithm: Option[Algorithm] = jwk match
@@ -207,6 +236,8 @@ object Jwk:
       case k: Jwk.RsaPublicKey  => k.alg
       case k: Jwk.RsaPrivateKey => k.alg
       case k: Jwk.SymmetricKey  => k.alg
+      case k: Jwk.OkpPublicKey  => k.alg
+      case k: Jwk.OkpPrivateKey => k.alg
 
     /** The `kid` field, regardless of JWK variant. */
     def keyId: Option[Kid] = jwk match
@@ -215,6 +246,8 @@ object Jwk:
       case k: Jwk.RsaPublicKey  => k.kid
       case k: Jwk.RsaPrivateKey => k.kid
       case k: Jwk.SymmetricKey  => k.kid
+      case k: Jwk.OkpPublicKey  => k.kid
+      case k: Jwk.OkpPrivateKey => k.kid
   end extension
 
   // Multi-parameter extension aliases
@@ -233,9 +266,10 @@ object Jwk:
   def from(key: PublicKey, kid: Option[Kid]): Either[JwtError, Jwk] =
     import scala.language.unsafeNulls
     key match
-      case ec: JcaEcPublicKey   => fromEcPublicKey(ec, kid)
-      case rsa: JcaRsaPublicKey => fromRsaPublicKey(rsa, kid)
-      case _                    => Left(JwtError.InvalidKey(s"Unsupported public key type: ${key.getClass.getName}"))
+      case ec: JcaEcPublicKey     => fromEcPublicKey(ec, kid)
+      case rsa: JcaRsaPublicKey   => fromRsaPublicKey(rsa, kid)
+      case edec: JcaEdEcPublicKey => fromEdEcPublicKey(edec, kid)
+      case _                      => Left(JwtError.InvalidKey(s"Unsupported public key type: ${key.getClass.getName}"))
 
   /** Creates a [[Jwk]] from a JCA [[PublicKey]] without a key identifier. */
   def from(key: PublicKey): Either[JwtError, Jwk] = from(key, None)
@@ -244,14 +278,16 @@ object Jwk:
   def from(key: PrivateKey, publicKey: PublicKey, kid: Option[Kid]): Either[JwtError, Jwk] =
     import scala.language.unsafeNulls
     (key, publicKey) match
-      case (ec: JcaEcPrivateKey, ecPub: JcaEcPublicKey)        => fromEcPrivateKey(ec, ecPub, kid)
-      case (rsa: JcaRsaPrivateCrtKey, rsaPub: JcaRsaPublicKey) => fromRsaPrivateKey(rsa, rsaPub, kid)
-      case _                                                   =>
+      case (ec: JcaEcPrivateKey, ecPub: JcaEcPublicKey)         => fromEcPrivateKey(ec, ecPub, kid)
+      case (rsa: JcaRsaPrivateCrtKey, rsaPub: JcaRsaPublicKey)  => fromRsaPrivateKey(rsa, rsaPub, kid)
+      case (edec: JcaEdEcPrivateKey, edecPub: JcaEdEcPublicKey) => fromEdEcPrivateKey(edec, edecPub, kid)
+      case _                                                    =>
         Left(
           JwtError.InvalidKey(
             s"Unsupported key pair types: ${key.getClass.getName}, ${publicKey.getClass.getName}"
           )
         )
+  end from
 
   /** Creates a [[Jwk]] from a JCA [[SecretKey]]. */
   def from(key: SecretKey, kid: Option[Kid]): Either[JwtError, Jwk] =
@@ -416,4 +452,85 @@ object Jwk:
       )
     )
   end fromRsaPrivateKey
+
+  // -- Internal OKP/EdDSA conversion helpers --
+
+  private inline def okpCurveFromEdEcKey(edec: JcaEdEcPublicKey): Either[JwtError, OkpCurve] =
+    import scala.language.unsafeNulls
+    edec.getParams match
+      case ns: NamedParameterSpec =>
+        ns.getName match
+          case "Ed25519" => Right(OkpCurve.Ed25519)
+          case "Ed448"   => Right(OkpCurve.Ed448)
+          case other     => Left(JwtError.InvalidKey(s"Unsupported EdDSA curve: $other"))
+      case null => Left(JwtError.InvalidKey("EdEC key has no NamedParameterSpec")) // scalafix:ok DisableSyntax.null; JCA getParams may return null
+
+  /** Encodes an EdEC public key's point as the RFC 8032 x-coordinate (little-endian). */
+  private inline def edEcPublicKeyToX(edec: JcaEdEcPublicKey, crv: OkpCurve): Base64UrlString =
+    import scala.language.unsafeNulls
+    val point = edec.getPoint
+    val yBytes = point.getY.toByteArray
+    // Convert BigInteger (big-endian, unsigned) to little-endian RFC 8032 encoding
+    val keyLen = crv.keyLength
+    val leBytes = new Array[Byte](keyLen)
+    // yBytes may be shorter than keyLen (leading zeros) or have a leading sign byte
+    val unsigned = if yBytes.length > 1 && yBytes(0) == 0.toByte then yBytes.drop(1) else yBytes
+    val copyLen = math.min(unsigned.length, keyLen)
+    // scalafix:off DisableSyntax.var, DisableSyntax.while; hot-path byte-level RFC 8032 encoding
+    // Reverse big-endian to little-endian
+    var i = 0
+    while i < copyLen do
+      leBytes(i) = unsigned(unsigned.length - 1 - i)
+      i += 1
+    // scalafix:on DisableSyntax.var, DisableSyntax.while
+    // Set the high bit of the last byte if x is odd (RFC 8032)
+    if point.isXOdd then leBytes(keyLen - 1) = (leBytes(keyLen - 1) | 0x80).toByte
+    Base64UrlString.wrap(base64UrlEncoder.encodeToString(leBytes))
+  end edEcPublicKeyToX
+
+  private inline def okpToPublicKey(crv: OkpCurve, xB64: Base64UrlString): Either[JwtError, PublicKey] =
+    Try {
+      import scala.language.unsafeNulls
+      val xBytes = base64UrlDecoder.decode(xB64.asInstanceOf[String]) // scalafix:ok DisableSyntax.asInstanceOf; Bypass opaque type
+      // Decode RFC 8032 little-endian encoding back to EdECPoint
+      val keyLen = crv.keyLength
+      val leBytes = if xBytes.length == keyLen then xBytes else java.util.Arrays.copyOf(xBytes, keyLen)
+      val isXOdd = (leBytes(keyLen - 1) & 0x80) != 0
+      leBytes(keyLen - 1) = (leBytes(keyLen - 1) & 0x7f).toByte
+      // scalafix:off DisableSyntax.var, DisableSyntax.while; hot-path byte-level RFC 8032 decoding
+      // Reverse little-endian to big-endian for BigInteger
+      val beBytes = new Array[Byte](keyLen)
+      var i = 0
+      while i < keyLen do
+        beBytes(i) = leBytes(keyLen - 1 - i)
+        i += 1
+      // scalafix:on DisableSyntax.var, DisableSyntax.while
+      val y = BigInteger(1, beBytes)
+      val point = java.security.spec.EdECPoint(isXOdd, y)
+      val spec = java.security.spec.EdECPublicKeySpec(NamedParameterSpec(crv.jcaName), point)
+      KeyFactory.getInstance("EdDSA").generatePublic(spec)
+    }.toEither.left.map(e => JwtError.InvalidKey(e.getMessage.nn))
+
+  private inline def okpToPrivateKey(crv: OkpCurve, dB64: Base64UrlString): Either[JwtError, PrivateKey] =
+    Try {
+      import scala.language.unsafeNulls
+      val dBytes = base64UrlDecoder.decode(dB64.asInstanceOf[String]) // scalafix:ok DisableSyntax.asInstanceOf; Bypass opaque type
+      val spec = java.security.spec.EdECPrivateKeySpec(NamedParameterSpec(crv.jcaName), dBytes)
+      KeyFactory.getInstance("EdDSA").generatePrivate(spec)
+    }.toEither.left.map(e => JwtError.InvalidKey(e.getMessage.nn))
+
+  private inline def fromEdEcPublicKey(edec: JcaEdEcPublicKey, kid: Option[Kid]): Either[JwtError, Jwk] =
+    for crv <- okpCurveFromEdEcKey(edec)
+    yield
+      val x = edEcPublicKeyToX(edec, crv)
+      Jwk.OkpPublicKey(crv = crv, x = x, use = None, keyOps = None, alg = None, kid = kid)
+
+  private inline def fromEdEcPrivateKey(edec: JcaEdEcPrivateKey, edecPub: JcaEdEcPublicKey, kid: Option[Kid]): Either[JwtError, Jwk] =
+    import scala.language.unsafeNulls
+    for crv <- okpCurveFromEdEcKey(edecPub)
+    yield
+      val x = edEcPublicKeyToX(edecPub, crv)
+      val dBytes = edec.getBytes.orElseThrow(() => RuntimeException("EdEC private key has no raw bytes"))
+      val dB64 = Base64UrlString.wrap(base64UrlEncoder.encodeToString(dBytes))
+      Jwk.OkpPrivateKey(crv = crv, x = x, d = dB64, use = None, keyOps = None, alg = None, kid = kid)
 end Jwk

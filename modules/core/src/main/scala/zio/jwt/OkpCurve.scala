@@ -20,41 +20,38 @@
  */
 package zio.jwt
 
-/** JOSE elliptic curve identifiers (RFC 7518 ss6.2.1.1). */
-enum EcCurve derives CanEqual:
-  case P256, P384, P521
+/** OKP (Octet Key Pair) curve identifiers for EdDSA (RFC 8037 ss2). */
+enum OkpCurve derives CanEqual:
+  case Ed25519, Ed448
 
-/** Companion for [[EcCurve]]. Provides JCA naming, sizing, and wire-format name conversions. */
-object EcCurve:
+/** Companion for [[OkpCurve]]. Provides JCA naming, sizing, and wire-format name conversions. */
+object OkpCurve:
 
-  /** All curve names as (wire-format string, EcCurve) pairs. */
-  val names: Array[(String, EcCurve)] = Array(
-    "P-256" -> EcCurve.P256,
-    "P-384" -> EcCurve.P384,
-    "P-521" -> EcCurve.P521
+  /** All curve names as (wire-format string, OkpCurve) pairs. */
+  val names: Array[(String, OkpCurve)] = Array(
+    "Ed25519" -> OkpCurve.Ed25519,
+    "Ed448" -> OkpCurve.Ed448
   )
 
-  private val stringToCurve: Map[String, EcCurve] = names.toMap
-  private val curveToString: Map[EcCurve, String] = names.map((s, c) => c -> s).toMap
+  private val stringToCurve: Map[String, OkpCurve] = names.toMap
+  private val curveToString: Map[OkpCurve, String] = names.map((s, c) => c -> s).toMap
 
-  /** Parses an EC curve from its wire-format string (e.g. "P-256"). */
-  def fromString(s: String): Option[EcCurve] = stringToCurve.get(s)
+  /** Parses an OKP curve from its wire-format string (e.g. "Ed25519"). */
+  def fromString(s: String): Option[OkpCurve] = stringToCurve.get(s)
 
-  extension (crv: EcCurve)
+  extension (crv: OkpCurve)
 
-    /** Wire-format name for JSON serialisation (e.g. "P-256", "P-384", "P-521"). */
+    /** Wire-format name for JSON serialisation (e.g. "Ed25519", "Ed448"). */
     inline def name: String = curveToString(crv)
 
-    /** JCA named curve identifier (e.g. "secp256r1"). */
+    /** JCA named curve identifier. */
     inline def jcaName: String = crv match
-      case P256 => "secp256r1"
-      case P384 => "secp384r1"
-      case P521 => "secp521r1"
+      case Ed25519 => "Ed25519"
+      case Ed448   => "Ed448"
 
-    /** Byte length of a single field element (coordinate or private key). */
-    inline def componentLength: Int = crv match
-      case P256 => 32
-      case P384 => 48
-      case P521 => 66
+    /** Byte length of the public key `x` coordinate. */
+    inline def keyLength: Int = crv match
+      case Ed25519 => 32
+      case Ed448   => 57
   end extension
-end EcCurve
+end OkpCurve

@@ -64,6 +64,7 @@ object SignatureEngine:
           der <- jcaSign(data, key, alg.jcaName, None)
           concat <- EcdsaCodec.derToConcat(der, sigLen)
         yield concat
+      case AlgorithmFamily.OKP  => jcaSign(data, key, "EdDSA", None)
       case AlgorithmFamily.HMAC => Left(JwtError.InvalidKey("PrivateKey is not valid for HMAC algorithms"))
 
   /** Verifies `signature` against `data` using the given algorithm and secret key. */
@@ -86,6 +87,7 @@ object SignatureEngine:
           der <- EcdsaCodec.concatToDer(signature)
           _ <- jcaVerify(data, der, key, alg.jcaName, None)
         yield ()
+      case AlgorithmFamily.OKP  => jcaVerify(data, signature, key, "EdDSA", None)
       case AlgorithmFamily.HMAC => Left(JwtError.InvalidKey("PublicKey is not valid for HMAC algorithms"))
 
   // -- RSA-PSS parameter specs --

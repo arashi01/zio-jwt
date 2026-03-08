@@ -98,7 +98,7 @@ class JwtMiddlewareSuite extends ZSuite:
   // -- Tests --
 
   testZ("returns 200 with valid bearer token") {
-    val header = JoseHeader(Algorithm.HS256, None, None, Some(Kid.fromUnsafe("k1")), None, None)
+    val header = JoseHeader(Algorithm.HS256, None, None, Some(Kid.fromUnsafe("k1")), None, None, None)
     val claims = RegisteredClaims(None, Some("test-user"), None, None, None, None, None)
     val token = createToken(header, claims)
     val request = Request
@@ -129,7 +129,7 @@ class JwtMiddlewareSuite extends ZSuite:
   }
 
   testZ("returns 401 with expired token") {
-    val header = JoseHeader(Algorithm.HS256, None, None, Some(Kid.fromUnsafe("k1")), None, None)
+    val header = JoseHeader(Algorithm.HS256, None, None, Some(Kid.fromUnsafe("k1")), None, None, None)
     val claims = RegisteredClaims(None, None, None, Some(NumericDate.fromEpochSecond(0L)), None, None, None)
     val token = createToken(header, claims)
     val request = Request
@@ -162,7 +162,7 @@ class JwtMiddlewareSuite extends ZSuite:
     )
 
   testZ("custom error handler returns 403 for expired token") {
-    val header = JoseHeader(Algorithm.HS256, None, None, Some(Kid.fromUnsafe("k1")), None, None)
+    val header = JoseHeader(Algorithm.HS256, None, None, Some(Kid.fromUnsafe("k1")), None, None, None)
     val claims = RegisteredClaims(None, None, None, Some(NumericDate.fromEpochSecond(0L)), None, None, None)
     val token = createToken(header, claims)
     val request = Request
@@ -179,7 +179,7 @@ class JwtMiddlewareSuite extends ZSuite:
   }
 
   testZ("custom error handler returns 200 for valid token") {
-    val header = JoseHeader(Algorithm.HS256, None, None, Some(Kid.fromUnsafe("k1")), None, None)
+    val header = JoseHeader(Algorithm.HS256, None, None, Some(Kid.fromUnsafe("k1")), None, None, None)
     val claims = RegisteredClaims(None, Some("custom-user"), None, None, None, None, None)
     val token = createToken(header, claims)
     val request = Request

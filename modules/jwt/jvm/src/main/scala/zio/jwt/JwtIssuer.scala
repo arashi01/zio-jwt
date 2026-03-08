@@ -92,7 +92,7 @@ object JwtIssuer:
   ) extends JwtIssuer:
 
     def issue[A: JwtCodec](claims: A, registeredClaims: RegisteredClaims): IO[JwtError, TokenString] =
-      val header = JoseHeader(config.algorithm, config.typ, config.cty, config.kid, config.x5t, config.x5tS256)
+      val header = JoseHeader(config.algorithm, config.typ, config.cty, config.kid, config.x5t, config.x5tS256, config.crit)
       for
         headerBytes <- ZIO.fromEither(headerCodec.encode(header).left.map(e => JwtError.DecodeError(e.getMessage.nn)))
         headerB64 = base64UrlEncode(headerBytes)

@@ -24,8 +24,10 @@ import java.time.Duration
 
 import zio.NonEmptyChunk
 
-/** Configuration for JWT token validation. Instances may be constructed via
-  * [[ValidationConfig$ ValidationConfig]].
+/** Configuration for JWT token validation (RFC 7519 ss4.1). `clockSkew` is the tolerance applied to
+  * `exp` and `nbf` checks. `requiredIssuer` and `requiredAudience` reject tokens that do not match
+  * the expected values. `requiredTyp` enforces the JOSE `typ` header. `allowedAlgorithms` restricts
+  * which signing algorithms are accepted; at least one algorithm is required.
   */
 final case class ValidationConfig(
   clockSkew: Duration,

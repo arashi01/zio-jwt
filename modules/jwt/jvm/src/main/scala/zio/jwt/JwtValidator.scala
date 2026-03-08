@@ -142,8 +142,9 @@ object JwtValidator:
       for
         // Step 1: Parse token segments
         segments <- ZIO.fromEither(parseSegments(token))
-        // Step 2: Decode header and validate algorithm
+        // Step 2: Decode header, validate crit, and validate algorithm
         header <- ZIO.fromEither(headerCodec.decode(segments.headerBytes).left.map(e => JwtError.DecodeError(e.getMessage.nn)))
+        _ <- ZIO.fromEither(checkCritHeader(header))
         _ <- ZIO.fromEither(checkAlgorithmAllowed(header.alg))
         // Step 3 + 4: Resolve key and verify signature
         _ <- verifySignature(header, segments)
@@ -168,6 +169,7 @@ object JwtValidator:
         for
           segments <- ZIO.fromEither(parseSegments(token))
           header <- ZIO.fromEither(headerCodec.decode(segments.headerBytes).left.map(e => JwtError.DecodeError(e.getMessage.nn)))
+          _ <- ZIO.fromEither(checkCritHeader(header))
           _ <- ZIO.fromEither(checkAlgorithmAllowed(header.alg))
           _ <- verifySignature(header, segments)
           customClaims <-
@@ -184,6 +186,21 @@ object JwtValidator:
           }
         }
     end validateAll
+
+    /** The set of header parameter names this implementation understands (RFC 7515 ss4.1.11). */
+    private val understoodHeaders: Set[String] =
+      Set("alg", "typ", "cty", "kid", "x5t", "x5t#S256", "crit")
+
+    /** Validates the `crit` header per RFC 7515 ss4.1.11. If present, every listed parameter must
+      * be in the set of understood headers; otherwise the token is rejected.
+      */
+    private inline def checkCritHeader(header: JoseHeader): Either[JwtError, Unit] =
+      header.crit match
+        case None         => Right(())
+        case Some(params) =>
+          val unsupported = params.filter(p => !understoodHeaders.contains(p))
+          if unsupported.isEmpty then Right(())
+          else Left(JwtError.CriticalHeaderUnsupported(unsupported))
 
     private inline def checkAlgorithmAllowed(alg: Algorithm): Either[JwtError, Unit] =
       Either.cond(config.allowedAlgorithms.contains(alg), (), JwtError.UnsupportedAlgorithm(alg.toString))

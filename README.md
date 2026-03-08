@@ -113,7 +113,8 @@ val issuerConfig = JwtIssuerConfig(
   typ = Some("JWT"),
   cty = None,
   x5t = None,
-  x5tS256 = None
+  x5tS256 = None,
+  crit = None
 )
 
 val program: IO[JwtError, TokenString] =
@@ -224,6 +225,7 @@ JWK variants: `EcPublicKey`, `EcPrivateKey`, `RsaPublicKey`, `RsaPrivateKey`, `S
 | RSA PKCS#1 v1.5 | RS256, RS384, RS512 |
 | ECDSA | ES256 (P-256), ES384 (P-384), ES512 (P-521) |
 | RSA-PSS | PS256, PS384, PS512 |
+| EdDSA (RFC 8037) | EdDSA (Ed25519, Ed448) |
 
 `alg:none` is unconditionally rejected. There is no `Algorithm.None` variant.
 
@@ -236,6 +238,7 @@ JWK variants: `EcPublicKey`, `EcPrivateKey`, `RsaPublicKey`, `RsaPrivateKey`, `S
 - **EC point-on-curve validation** -- independent of JCA provider, prevents invalid-curve attacks
 - **RSA minimum key size** -- rejects keys with modulus below 2048 bits
 - **Constant-time HMAC comparison** -- single-pass XOR accumulation, no short-circuit
+- **`crit` header processing** (RFC 7515 ss4.1.11) -- rejects tokens with unrecognised critical header parameters
 
 ---
 
@@ -258,6 +261,7 @@ enum JwtError extends Throwable with NoStackTrace:
   case KeyNotFound(kid: Option[Kid])
   case AmbiguousKey(kid: Option[Kid], count: Int)
   case FetchError(message: String)
+  case CriticalHeaderUnsupported(parameters: Chunk[String])
 ```
 
 Pattern match directly on the error channel:
@@ -298,6 +302,10 @@ All library types derive `CanEqual`, so they work seamlessly with `-language:str
 
 The following are under consideration for future releases:
 
+- **Cross-platform JwtDecoder** -- decode tokens without signature verification in `zio-jwt-core` (JS/Native)
+- **JWK Thumbprint** (RFC 7638) -- key identification by content hash
+- **X.509 Thumbprint computation** -- compute x5t/x5tS256 from certificates
+- **OIDC Discovery** -- auto-discover JWKS URLs from `/.well-known/openid-configuration`
 - **JWE (encrypted JWT)** -- `JweDecryptor` / `JweEncryptor` services with `AES-GCM` and `RSA-OAEP` key management
 - **Nested JWT** -- sign-then-encrypt and encrypt-then-sign composition via `cty: "JWT"`
 - **Custom JOSE header fields** -- type-safe extensible header model beyond `alg`, `typ`, `cty`, `kid`

@@ -22,7 +22,7 @@ package zio.jwt
 
 /** Algorithm family grouping for key-type dispatch. */
 enum AlgorithmFamily derives CanEqual:
-  case HMAC, RSA, EC, RSAPSS
+  case HMAC, RSA, EC, RSAPSS, OKP
 
 /** JWS digital signature and MAC algorithm identifiers (RFC 7518 ss3.1). */
 enum Algorithm derives CanEqual:
@@ -34,10 +34,41 @@ enum Algorithm derives CanEqual:
   case ES256, ES384, ES512
   // RSA-PSS
   case PS256, PS384, PS512
+  // EdDSA (RFC 8037)
+  case EdDSA
 
-/** Companion for [[Algorithm]]. Provides JCA mapping and family classification. */
+/** Companion for [[Algorithm]]. Provides JCA mapping, family classification, and wire-format name
+  * conversions.
+  */
 object Algorithm:
+
+  /** All algorithm names as (wire-format string, Algorithm) pairs. */
+  val names: Array[(String, Algorithm)] = Array(
+    "HS256" -> Algorithm.HS256,
+    "HS384" -> Algorithm.HS384,
+    "HS512" -> Algorithm.HS512,
+    "RS256" -> Algorithm.RS256,
+    "RS384" -> Algorithm.RS384,
+    "RS512" -> Algorithm.RS512,
+    "ES256" -> Algorithm.ES256,
+    "ES384" -> Algorithm.ES384,
+    "ES512" -> Algorithm.ES512,
+    "PS256" -> Algorithm.PS256,
+    "PS384" -> Algorithm.PS384,
+    "PS512" -> Algorithm.PS512,
+    "EdDSA" -> Algorithm.EdDSA
+  )
+
+  private val stringToAlgorithm: Map[String, Algorithm] = names.toMap
+  private val algorithmToString: Map[Algorithm, String] = names.map((s, a) => a -> s).toMap
+
+  /** Parses an algorithm from its wire-format string (e.g. "HS256", "RS512"). */
+  def fromString(s: String): Option[Algorithm] = stringToAlgorithm.get(s)
+
   extension (alg: Algorithm)
+
+    /** Wire-format name for JSON serialisation (e.g. "HS256", "RS512"). */
+    def name: String = algorithmToString(alg)
 
     /** JCA algorithm name for [[java.security.Signature]] or [[javax.crypto.Mac]]. */
     def jcaName: String = alg match
@@ -53,6 +84,7 @@ object Algorithm:
       case Algorithm.PS256 => "RSASSA-PSS"
       case Algorithm.PS384 => "RSASSA-PSS"
       case Algorithm.PS512 => "RSASSA-PSS"
+      case Algorithm.EdDSA => "EdDSA"
 
     /** Algorithm family for key-type dispatch. */
     def family: AlgorithmFamily = alg match
@@ -60,12 +92,18 @@ object Algorithm:
       case Algorithm.RS256 | Algorithm.RS384 | Algorithm.RS512 => AlgorithmFamily.RSA
       case Algorithm.ES256 | Algorithm.ES384 | Algorithm.ES512 => AlgorithmFamily.EC
       case Algorithm.PS256 | Algorithm.PS384 | Algorithm.PS512 => AlgorithmFamily.RSAPSS
+      case Algorithm.EdDSA                                     => AlgorithmFamily.OKP
 
     /** ECDSA curve for this algorithm, if applicable. */
     def curve: Option[EcCurve] = alg match
       case Algorithm.ES256 => Some(EcCurve.P256)
       case Algorithm.ES384 => Some(EcCurve.P384)
       case Algorithm.ES512 => Some(EcCurve.P521)
+      case _               => None
+
+    /** OKP curve for this algorithm, if applicable. */
+    def okpCurve: Option[OkpCurve] = alg match
+      case Algorithm.EdDSA => None // EdDSA is curve-agnostic; curve determined by key
       case _               => None
   end extension
 end Algorithm

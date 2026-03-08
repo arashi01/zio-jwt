@@ -129,4 +129,10 @@ class JwtErrorSuite extends munit.FunSuite:
     val err = JwtError.InvalidSignature
     assertEquals(err.getStackTrace.length, 0)
   }
+
+  test("CriticalHeaderUnsupported getMessage includes parameter names") {
+    val err = JwtError.CriticalHeaderUnsupported(zio.Chunk("x-custom", "x-other"))
+    assert(err.getMessage.contains("x-custom"))
+    assert(err.getMessage.contains("x-other"))
+  }
 end JwtErrorSuite
