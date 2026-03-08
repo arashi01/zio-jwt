@@ -58,7 +58,10 @@ object JwtIssuer:
     base64UrlEncoder.encodeToString(bytes)
 
   /** Merges two JSON objects at byte level. Fields from `secondary` appear after `primary` in the
-    * output, giving secondary precedence on field collisions (last-occurrence-wins).
+    * output, giving secondary precedence on field collisions (last-occurrence-wins per
+    * jsoniter-scala semantics; RFC 8259 ss4 says names SHOULD be unique). In [[LiveIssuer.issue]],
+    * registered claims are secondary so they take precedence over identically-named fields in user
+    * custom claims.
     */
   private inline def mergeJsonObjects(primary: Array[Byte], secondary: Array[Byte]): Array[Byte] =
     val pLen = primary.length

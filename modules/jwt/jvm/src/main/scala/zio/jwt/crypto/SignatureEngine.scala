@@ -162,6 +162,10 @@ object SignatureEngine:
     }.toEither match
       case Right(true)  => Right(())
       case Right(false) => Left(JwtError.InvalidSignature)
-      case Left(e)      => Left(JwtError.InvalidSignature)
+      // Security: swallow JCA exception details to avoid leaking implementation info.
+      // Configuration errors (e.g. algorithm mismatch) are indistinguishable from invalid
+      // signatures by design.
+      case Left(e) => Left(JwtError.InvalidSignature)
+    end match
   end jcaVerify
 end SignatureEngine

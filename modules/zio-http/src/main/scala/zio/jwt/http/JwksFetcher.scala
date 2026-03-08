@@ -60,19 +60,19 @@ object JwksFetcher:
     def fetch: IO[JwtError, JwkSet] =
       URL.fromURI(config.jwksUrl) match
         case None =>
-          ZIO.fail(JwtError.MalformedToken(s"Invalid JWKS URL: ${config.jwksUrl}"))
+          ZIO.fail(JwtError.FetchError(s"Invalid JWKS URL: ${config.jwksUrl}"))
         case Some(url) =>
           val request = Request.get(url)
           (for
-            response <- Client.batched(request).mapError(e => JwtError.MalformedToken(e.getMessage.nn))
+            response <- Client.batched(request).mapError(e => JwtError.FetchError(e.getMessage.nn))
             _ <- ZIO.when(!response.status.isSuccess)(
                    ZIO.fail(
-                     JwtError.MalformedToken(
+                     JwtError.FetchError(
                        s"JWKS fetch returned HTTP ${response.status.code}"
                      )
                    )
                  )
-            bytes <- response.body.asArray.mapError(e => JwtError.MalformedToken(e.getMessage.nn))
+            bytes <- response.body.asArray.mapError(e => JwtError.FetchError(e.getMessage.nn))
             jwkSet <- ZIO.fromEither(jwkSetCodec.decode(bytes).left.map(e => JwtError.DecodeError(e.getMessage.nn)))
           yield jwkSet).provideEnvironment(zio.ZEnvironment(client))
   end LiveFetcher

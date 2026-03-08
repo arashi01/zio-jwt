@@ -21,6 +21,8 @@
 package zio.jwt
 
 /** Configuration for JWT token issuance. The issuer constructs the JOSE header from these settings.
+  * The `x5t` and `x5tS256` fields carry base64url-encoded X.509 certificate thumbprints (SHA-1 and
+  * SHA-256 respectively) for certificate-based key identification (RFC 7515 ss4.1.7, ss4.1.8).
   * Instances may be constructed via [[JwtIssuerConfig$ JwtIssuerConfig]].
   */
 final case class JwtIssuerConfig(

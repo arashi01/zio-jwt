@@ -250,9 +250,14 @@ enum JwtError extends Throwable with NoStackTrace:
   case InvalidAudience(expected: String, actual: Option[Audience])
   case InvalidIssuer(expected: String, actual: Option[String])
   case InvalidSignature
-  case MalformedToken(cause: Throwable)
+  case MalformedToken(message: String)
+  case DecodeError(message: String)
+  case InvalidKey(message: String)
+  case InvalidTyp(expected: String, actual: Option[String])
   case UnsupportedAlgorithm(alg: String)
   case KeyNotFound(kid: Option[Kid])
+  case AmbiguousKey(kid: Option[Kid], count: Int)
+  case FetchError(message: String)
 ```
 
 Pattern match directly on the error channel:
@@ -274,10 +279,10 @@ JSON serialisation is pluggable via `JwtCodec[A]`:
 ```scala
 trait JwtCodec[A]:
   def decode(bytes: Array[Byte]): Either[Throwable, A]
-  def encode(value: A): Array[Byte]
+  def encode(value: A): Either[Throwable, Array[Byte]]
 ```
 
-`zio-jwt-jsoniter` provides instances for all library types. Instances are injected into `JwtValidator.live` and `JwtIssuer.live` via `using` parameters -- bring them into scope with `import zio.jwt.jsoniter.given`.
+`zio-jwt-jsoniter` provides instances for all library types. Instances are injected into `JwtValidator.live` and `JwtIssuer.live` via `using` parameters - bring them into scope with `import zio.jwt.jsoniter.given`.
 
 To use a different JSON library, implement `JwtCodec` for `JoseHeader`, `RegisteredClaims`, and your custom claims type.
 

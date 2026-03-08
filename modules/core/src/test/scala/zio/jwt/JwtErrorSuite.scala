@@ -120,6 +120,11 @@ class JwtErrorSuite extends munit.FunSuite:
     assert(err.getMessage.contains("5"))
   }
 
+  test("FetchError getMessage wraps message") {
+    val err = JwtError.FetchError("connection refused")
+    assert(err.getMessage.contains("connection refused"))
+  }
+
   test("extends NoStackTrace (no stack trace captured)") {
     val err = JwtError.InvalidSignature
     assertEquals(err.getStackTrace.length, 0)

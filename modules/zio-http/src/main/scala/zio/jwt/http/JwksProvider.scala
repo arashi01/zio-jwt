@@ -79,9 +79,13 @@ object JwksProvider:
         initial <- Promise.make[Nothing, Chunk[Jwk]]
         ref <- Ref.Synchronized.make[ProviderState](ProviderState(initial, lastRefresh = None))
         provider = LiveProvider(ref)
-        // Initial fetch with retry  -  propagates JwtError on exhaustion
+        // Initial fetch with retry  -  propagates JwtError on exhaustion.
+        // On exhaustion, complete the promise defensively so callers never hang.
         _ <- doFetch(fetcher, ref, config)
                .retry(Schedule.exponential(Duration.ofSeconds(1)) && Schedule.recurs(20))
+               .catchAll { err =>
+                 ref.get.flatMap(_.promise.succeed(Chunk.empty)) *> ZIO.fail(err)
+               }
         // Background periodic refresh  -  failures retain last-known-good keyset
         _ <- (
                ZIO.sleep(zio.Duration.fromJava(config.refreshInterval)) *>
@@ -107,7 +111,7 @@ object JwksProvider:
     Either.cond(
       url.getScheme == "https",
       (),
-      JwtError.MalformedToken(s"JWKS URL must use HTTPS scheme, got: ${url.getScheme}")
+      JwtError.FetchError(s"JWKS URL must use HTTPS scheme, got: ${url.getScheme}")
     )
 
   private def doFetch(

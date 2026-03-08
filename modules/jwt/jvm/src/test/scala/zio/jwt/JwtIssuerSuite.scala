@@ -202,4 +202,49 @@ class JwtIssuerSuite extends ZSuite:
       assertEquals(jwt.header.kid, Some(Kid.fromUnsafe("cfg-kid")))
     ).provide(layer)
   }
+
+  // -- x5t / x5tS256 round-trip --
+
+  testZ("x5t round-trips through issue and validate") {
+    val jwk = Jwk.from(hmac256Key, Some(Kid.fromUnsafe("k1"))).toOption.get
+    val keySource = KeySource.static(jwk)
+    val thumb = Base64UrlString.from("dGVzdC10aHVtYnByaW50").toOption.get
+    val issuerConfig = JwtIssuerConfig(Algorithm.HS256, Some(Kid.fromUnsafe("k1")), None, None, Some(thumb), None)
+    val claims = RegisteredClaims(None, None, None, None, None, None, None)
+    val layer = issuerLayer(issuerConfig, keySource) ++ validatorLayer(validConfig(Algorithm.HS256), keySource)
+    (for
+      token <- ZIO.serviceWithZIO[JwtIssuer](_.issue[Unit]((), claims))
+      jwt <- ZIO.serviceWithZIO[JwtValidator](_.validate[Unit](token))
+    yield assertEquals(jwt.header.x5t, Some(thumb))).provide(layer)
+  }
+
+  testZ("x5tS256 round-trips through issue and validate") {
+    val jwk = Jwk.from(hmac256Key, Some(Kid.fromUnsafe("k1"))).toOption.get
+    val keySource = KeySource.static(jwk)
+    val thumb = Base64UrlString.from("c2hhMjU2LXRodW1icHJpbnQ").toOption.get
+    val issuerConfig = JwtIssuerConfig(Algorithm.HS256, Some(Kid.fromUnsafe("k1")), None, None, None, Some(thumb))
+    val claims = RegisteredClaims(None, None, None, None, None, None, None)
+    val layer = issuerLayer(issuerConfig, keySource) ++ validatorLayer(validConfig(Algorithm.HS256), keySource)
+    (for
+      token <- ZIO.serviceWithZIO[JwtIssuer](_.issue[Unit]((), claims))
+      jwt <- ZIO.serviceWithZIO[JwtValidator](_.validate[Unit](token))
+    yield assertEquals(jwt.header.x5tS256, Some(thumb))).provide(layer)
+  }
+
+  testZ("x5t and x5tS256 both round-trip together") {
+    val jwk = Jwk.from(hmac256Key, Some(Kid.fromUnsafe("k1"))).toOption.get
+    val keySource = KeySource.static(jwk)
+    val x5tVal = Base64UrlString.from("dGVzdC10aHVtYnByaW50").toOption.get
+    val x5tS256Val = Base64UrlString.from("c2hhMjU2LXRodW1icHJpbnQ").toOption.get
+    val issuerConfig = JwtIssuerConfig(Algorithm.HS256, Some(Kid.fromUnsafe("k1")), None, None, Some(x5tVal), Some(x5tS256Val))
+    val claims = RegisteredClaims(None, None, None, None, None, None, None)
+    val layer = issuerLayer(issuerConfig, keySource) ++ validatorLayer(validConfig(Algorithm.HS256), keySource)
+    (for
+      token <- ZIO.serviceWithZIO[JwtIssuer](_.issue[Unit]((), claims))
+      jwt <- ZIO.serviceWithZIO[JwtValidator](_.validate[Unit](token))
+    yield
+      assertEquals(jwt.header.x5t, Some(x5tVal))
+      assertEquals(jwt.header.x5tS256, Some(x5tS256Val))
+    ).provide(layer)
+  }
 end JwtIssuerSuite

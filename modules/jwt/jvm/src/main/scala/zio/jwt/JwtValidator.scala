@@ -25,6 +25,8 @@ import java.time.Duration
 import java.time.Instant
 
 import scala.util.Try
+import scala.util.boundary
+import scala.util.boundary.break
 
 import zio.Chunk
 import zio.IO
@@ -44,7 +46,10 @@ trait JwtValidator:
   /** Decodes a token without signature verification or claim validation. Useful for debugging, log
     * enrichment, or routing based on unverified claims (e.g. selecting key source by `iss`).
     *
-    * '''Security warning''': the returned [[UnverifiedJwt]] has not been verified -- do not trust
+    * Algorithm allowlist checking is also skipped - the header may contain any algorithm string,
+    * including ones not in [[ValidationConfig.allowedAlgorithms]].
+    *
+    * '''Security warning''': the returned [[UnverifiedJwt]] has not been verified - do not trust
     * its contents for authorisation decisions.
     */
   def decode[A: JwtCodec](token: TokenString): IO[JwtError, UnverifiedJwt[A]]
@@ -199,13 +204,33 @@ object JwtValidator:
       claims: RegisteredClaims,
       now: Instant
     ): Either[JwtError, Unit] =
-      for
-        _ <- claims.exp.fold[Either[JwtError, Unit]](Right(()))(e => validateExp(e, now, config.clockSkew))
-        _ <- claims.nbf.fold[Either[JwtError, Unit]](Right(()))(n => validateNbf(n, now, config.clockSkew))
-        _ <- config.requiredIssuer.fold[Either[JwtError, Unit]](Right(()))(iss => validateIss(iss, claims.iss))
-        _ <- config.requiredAudience.fold[Either[JwtError, Unit]](Right(()))(aud => validateAud(aud, claims.aud))
-        _ <- config.requiredTyp.fold[Either[JwtError, Unit]](Right(()))(typ => validateTyp(typ, header.typ))
-      yield ()
+      boundary:
+        claims.exp.foreach(e =>
+          validateExp(e, now, config.clockSkew) match
+            case Left(err) => break(Left(err))
+            case _         => ()
+        )
+        claims.nbf.foreach(n =>
+          validateNbf(n, now, config.clockSkew) match
+            case Left(err) => break(Left(err))
+            case _         => ()
+        )
+        config.requiredIssuer.foreach(iss =>
+          validateIss(iss, claims.iss) match
+            case Left(err) => break(Left(err))
+            case _         => ()
+        )
+        config.requiredAudience.foreach(aud =>
+          validateAud(aud, claims.aud) match
+            case Left(err) => break(Left(err))
+            case _         => ()
+        )
+        config.requiredTyp.foreach(typ =>
+          validateTyp(typ, header.typ) match
+            case Left(err) => break(Left(err))
+            case _         => ()
+        )
+        Right(())
 
     /** Collects all claim validation errors. Returns [[Left]] with the accumulated errors when at
       * least one claim check fails, or [[Right]] if all pass.
@@ -215,15 +240,13 @@ object JwtValidator:
       claims: RegisteredClaims,
       now: Instant
     ): Either[NonEmptyChunk[JwtError], Unit] =
-      val checks: List[Either[JwtError, Unit]] = List(
-        claims.exp.fold[Either[JwtError, Unit]](Right(()))(e => validateExp(e, now, config.clockSkew)),
-        claims.nbf.fold[Either[JwtError, Unit]](Right(()))(n => validateNbf(n, now, config.clockSkew)),
-        config.requiredIssuer.fold[Either[JwtError, Unit]](Right(()))(iss => validateIss(iss, claims.iss)),
-        config.requiredAudience.fold[Either[JwtError, Unit]](Right(()))(aud => validateAud(aud, claims.aud)),
-        config.requiredTyp.fold[Either[JwtError, Unit]](Right(()))(typ => validateTyp(typ, header.typ))
-      )
-      val errors = Chunk.fromIterable(checks.collect { case Left(e) => e })
-      NonEmptyChunk.fromChunk(errors) match
+      val builder = Chunk.newBuilder[JwtError]
+      claims.exp.foreach(e => validateExp(e, now, config.clockSkew).left.foreach(builder += _))
+      claims.nbf.foreach(n => validateNbf(n, now, config.clockSkew).left.foreach(builder += _))
+      config.requiredIssuer.foreach(iss => validateIss(iss, claims.iss).left.foreach(builder += _))
+      config.requiredAudience.foreach(aud => validateAud(aud, claims.aud).left.foreach(builder += _))
+      config.requiredTyp.foreach(typ => validateTyp(typ, header.typ).left.foreach(builder += _))
+      NonEmptyChunk.fromChunk(builder.result()) match
         case Some(nec) => Left(nec)
         case None      => Right(())
     end accumulateClaimErrors

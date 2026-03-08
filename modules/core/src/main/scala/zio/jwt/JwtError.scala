@@ -67,6 +67,9 @@ enum JwtError extends Throwable with NoStackTrace derives CanEqual:
   /** Multiple keys matched the requested `kid`; resolution is ambiguous. */
   case AmbiguousKey(kid: Option[Kid], count: Int)
 
+  /** A remote resource (e.g. JWKS endpoint) could not be fetched. */
+  case FetchError(message: String)
+
   override def getMessage: String = this match
     case Expired(exp, now) =>
       s"Token expired at ${exp.unwrap}, current time $now"
@@ -92,4 +95,6 @@ enum JwtError extends Throwable with NoStackTrace derives CanEqual:
       s"Key not found${kid.fold("")(k => s" for kid '${k.unwrap}'")}"
     case AmbiguousKey(kid, count) =>
       s"Ambiguous key${kid.fold("")(k => s" for kid '${k.unwrap}'")}: $count keys match"
+    case FetchError(message) =>
+      s"Fetch error: $message"
 end JwtError

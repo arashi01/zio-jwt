@@ -41,7 +41,9 @@ object JwtMiddleware:
     * validates the token via [[JwtValidator]], and provides the decoded [[Jwt]] as handler context.
     *
     * Returns HTTP 401 Unauthorized with a `WWW-Authenticate: Bearer` header when the token is
-    * missing or invalid.
+    * missing or invalid. All errors are folded into a generic 401 with no detail. For production
+    * use prefer the overload accepting an `onError` handler for logging and differentiated
+    * responses.
     */
   def bearer[A: JwtCodec]: HandlerAspect[JwtValidator, Jwt[A]] =
     HandlerAspect.customAuthProvidingZIO(
