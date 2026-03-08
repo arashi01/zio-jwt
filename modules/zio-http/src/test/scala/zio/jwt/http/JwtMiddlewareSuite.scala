@@ -41,8 +41,8 @@ class JwtMiddlewareSuite extends ZSuite:
 
   private given JwtCodec[Unit] = new JwtCodec[Unit]:
     def decode(bytes: Array[Byte]): Either[Throwable, Unit] = Right(())
-    def encode(value: Unit): Array[Byte] =
-      "{}".getBytes(StandardCharsets.UTF_8)
+    def encode(value: Unit): Either[Throwable, Array[Byte]] =
+      Right("{}".getBytes(StandardCharsets.UTF_8))
 
   // -- Key generation --
 
@@ -66,8 +66,8 @@ class JwtMiddlewareSuite extends ZSuite:
     val encoder = java.util.Base64.getUrlEncoder.withoutPadding()
     val headerCodec = summon[JwtCodec[JoseHeader]]
     val claimsCodec = summon[JwtCodec[RegisteredClaims]]
-    val headerB64 = encoder.encodeToString(headerCodec.encode(header))
-    val payloadB64 = encoder.encodeToString(claimsCodec.encode(claims))
+    val headerB64 = encoder.encodeToString(headerCodec.encode(header).toOption.get)
+    val payloadB64 = encoder.encodeToString(claimsCodec.encode(claims).toOption.get)
     val signingInput = s"$headerB64.$payloadB64".getBytes(StandardCharsets.US_ASCII)
     val sig = SignatureEngine.sign(signingInput, hmac256Key, Algorithm.HS256).toOption.get
     val sigB64 = encoder.encodeToString(sig)
@@ -98,7 +98,7 @@ class JwtMiddlewareSuite extends ZSuite:
   // -- Tests --
 
   testZ("returns 200 with valid bearer token") {
-    val header = JoseHeader(Algorithm.HS256, None, None, Some(Kid.fromUnsafe("k1")))
+    val header = JoseHeader(Algorithm.HS256, None, None, Some(Kid.fromUnsafe("k1")), None, None)
     val claims = RegisteredClaims(None, Some("test-user"), None, None, None, None, None)
     val token = createToken(header, claims)
     val request = Request
@@ -129,7 +129,7 @@ class JwtMiddlewareSuite extends ZSuite:
   }
 
   testZ("returns 401 with expired token") {
-    val header = JoseHeader(Algorithm.HS256, None, None, Some(Kid.fromUnsafe("k1")))
+    val header = JoseHeader(Algorithm.HS256, None, None, Some(Kid.fromUnsafe("k1")), None, None)
     val claims = RegisteredClaims(None, None, None, Some(NumericDate.fromEpochSecond(0L)), None, None, None)
     val token = createToken(header, claims)
     val request = Request
@@ -146,5 +146,50 @@ class JwtMiddlewareSuite extends ZSuite:
       val wwwAuth = response.rawHeader("WWW-Authenticate")
       assert(wwwAuth.isDefined, "Expected WWW-Authenticate header")
       assert(wwwAuth.get.contains("Bearer"), s"Expected Bearer in WWW-Authenticate, got ${wwwAuth.get}")
+  }
+
+  // -- Custom error handler bearer middleware --
+
+  private val customErrorRoutes: Routes[JwtValidator, Response] =
+    Routes(
+      Method.GET / "custom" -> handler((_: Request) =>
+        withContext((jwt: Jwt[Unit]) => Response.text(jwt.registeredClaims.sub.getOrElse("anonymous")))
+      )
+    ) @@ JwtMiddleware.bearer[Unit](err =>
+      err match
+        case _: JwtError.Expired => Response.status(Status.Forbidden)
+        case _                   => Response.status(Status.Unauthorized)
+    )
+
+  testZ("custom error handler returns 403 for expired token") {
+    val header = JoseHeader(Algorithm.HS256, None, None, Some(Kid.fromUnsafe("k1")), None, None)
+    val claims = RegisteredClaims(None, None, None, Some(NumericDate.fromEpochSecond(0L)), None, None, None)
+    val token = createToken(header, claims)
+    val request = Request
+      .get(URL.root / "custom")
+      .copy(headers = Headers(Header.Authorization.Bearer(token.unwrap)))
+    for response <- customErrorRoutes.runZIO(request).provide(Scope.default, validatorLayer)
+    yield assertEquals(response.status, Status.Forbidden)
+  }
+
+  testZ("custom error handler returns 401 for missing token") {
+    val request = Request.get(URL.root / "custom")
+    for response <- customErrorRoutes.runZIO(request).provide(Scope.default, validatorLayer)
+    yield assertEquals(response.status, Status.Unauthorized)
+  }
+
+  testZ("custom error handler returns 200 for valid token") {
+    val header = JoseHeader(Algorithm.HS256, None, None, Some(Kid.fromUnsafe("k1")), None, None)
+    val claims = RegisteredClaims(None, Some("custom-user"), None, None, None, None, None)
+    val token = createToken(header, claims)
+    val request = Request
+      .get(URL.root / "custom")
+      .copy(headers = Headers(Header.Authorization.Bearer(token.unwrap)))
+    for
+      response <- customErrorRoutes.runZIO(request).provide(Scope.default, validatorLayer)
+      body <- response.body.asString
+    yield
+      assertEquals(response.status, Status.Ok)
+      assertEquals(body, "custom-user")
   }
 end JwtMiddlewareSuite

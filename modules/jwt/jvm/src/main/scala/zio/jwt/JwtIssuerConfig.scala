@@ -27,7 +27,9 @@ final case class JwtIssuerConfig(
   algorithm: Algorithm,
   kid: Option[Kid],
   typ: Option[String],
-  cty: Option[String]
+  cty: Option[String],
+  x5t: Option[Base64UrlString],
+  x5tS256: Option[Base64UrlString]
 ) derives CanEqual
 
 /** Companion for [[JwtIssuerConfig]]. */

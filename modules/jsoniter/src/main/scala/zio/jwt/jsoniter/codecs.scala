@@ -106,6 +106,8 @@ given JsonValueCodec[JoseHeader]:
     var typ: Option[String] = None
     var cty: Option[String] = None
     var kid: Option[Kid] = None
+    var x5t: Option[Base64UrlString] = None
+    var x5tS256: Option[Base64UrlString] = None
     var algSeen = false
 
     if !in.isNextToken('{') then in.decodeError("expected '{'")
@@ -128,6 +130,14 @@ given JsonValueCodec[JoseHeader]:
           Kid.from(in.readString("")) match
             case Right(k) => kid = Some(k)
             case Left(e)  => in.decodeError(e.getMessage)
+        else if key == "x5t" then
+          Base64UrlString.from(in.readString("")) match
+            case Right(b) => x5t = Some(b)
+            case Left(e)  => in.decodeError(e.getMessage)
+        else if key == "x5t#S256" then
+          Base64UrlString.from(in.readString("")) match
+            case Right(b) => x5tS256 = Some(b)
+            case Left(e)  => in.decodeError(e.getMessage)
         else in.skip()
         end if
         in.isNextToken(',')
@@ -136,7 +146,7 @@ given JsonValueCodec[JoseHeader]:
     end if
 
     if !algSeen then in.decodeError("missing required field: alg")
-    JoseHeader(alg.asInstanceOf[Algorithm], typ, cty, kid)
+    JoseHeader(alg.asInstanceOf[Algorithm], typ, cty, kid, x5t, x5tS256)
   end decodeValue
 
   override def encodeValue(x: JoseHeader, out: JsonWriter): Unit =
@@ -154,6 +164,14 @@ given JsonValueCodec[JoseHeader]:
     x.kid.foreach { k =>
       out.writeKey("kid")
       out.writeVal(k.unwrap)
+    }
+    x.x5t.foreach { t =>
+      out.writeKey("x5t")
+      out.writeVal(t.unwrap)
+    }
+    x.x5tS256.foreach { s =>
+      out.writeKey("x5t#S256")
+      out.writeVal(s.unwrap)
     }
     out.writeObjectEnd()
   end encodeValue
@@ -288,5 +306,5 @@ given [A] => (jvc: JsonValueCodec[A]) => JwtCodec[A]:
   inline def decode(bytes: Array[Byte]): Either[Throwable, A] =
     Try(readFromArray[A](bytes)).toEither
 
-  inline def encode(value: A): Array[Byte] =
-    writeToArray[A](value)
+  inline def encode(value: A): Either[Throwable, Array[Byte]] =
+    Try(writeToArray[A](value)).toEither

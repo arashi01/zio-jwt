@@ -18,19 +18,18 @@
  * IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
  * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
-package zio.jwt.crypto
+package zio.jwt
 
-import java.security.spec.ECPoint
-
-import zio.jwt.EcCurve
-import zio.jwt.JwtError
-
-// Extension methods on EcCurve delegating to EcParams utility functions.
-// Discoverable via `import zio.jwt.crypto.*`.
-// EcParams.validatePointOnCurve(crv, point) serves as the non-curried alias.
-
-extension (crv: EcCurve)
-
-  /** Validates that the given point lies on this curve. */
-  def validatePoint(point: ECPoint): Either[JwtError, Unit] =
-    EcParams.validatePointOnCurve(crv, point)
+/** Decoded but **unverified** JWT envelope. The signature has not been checked and claims have not
+  * been validated. Do not use for authorisation decisions.
+  *
+  * Useful for debugging, log enrichment, or routing based on unverified claims (e.g. selecting key
+  * source by `iss`).
+  *
+  * @see [[Jwt]] for the verified counterpart returned by [[JwtValidator$ JwtValidator]].validate.
+  */
+final case class UnverifiedJwt[+A](
+  header: JoseHeader,
+  claims: A,
+  registeredClaims: RegisteredClaims
+) derives CanEqual

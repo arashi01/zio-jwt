@@ -30,8 +30,11 @@ import zio.Scope
 import zio.UIO
 import zio.ZIO
 import zio.ZLayer
+import zio.http.Client
 
 import zio.jwt.Jwk
+import zio.jwt.JwkSet
+import zio.jwt.JwtCodec
 import zio.jwt.JwtError
 import zio.jwt.KeySource
 
@@ -46,22 +49,44 @@ trait JwksProvider extends KeySource
 /** Companion for [[JwksProvider]]. Provides the scoped live layer with background refresh. */
 object JwksProvider:
 
+  /** Convenience constructor: builds a complete [[JwksProvider]] from a JWKS URL and refresh
+    * configuration. Internally constructs [[JwksProviderConfig]], [[JwksFetcher]], and the live
+    * provider layer.
+    */
+  def fromUrl(
+    jwksUrl: java.net.URI,
+    refreshInterval: java.time.Duration,
+    minRefreshInterval: java.time.Duration
+  )(using JwtCodec[JwkSet]): ZLayer[Client & Scope, JwtError, JwksProvider] =
+    val configLayer = ZLayer.succeed(JwksProviderConfig(jwksUrl, refreshInterval, minRefreshInterval))
+    val fetcherLayer: ZLayer[Client, Nothing, JwksFetcher] = configLayer >>> JwksFetcher.live
+    (fetcherLayer ++ configLayer) >>> live
+
   /** Constructs a scoped [[JwksProvider]] layer. A background fibre periodically refreshes keys
     * from the [[JwksFetcher]]. The fibre lifecycle is tied to the [[Scope]] -- releasing the scope
     * interrupts the fibre.
     *
-    * Initial fetch retries with exponential backoff until successful. After the first success,
-    * fetch failures retain last-known-good data.
+    * The initial fetch retries with exponential backoff up to 20 attempts. If all attempts fail,
+    * the layer construction fails with [[JwtError]]. After the first success, subsequent fetch
+    * failures retain last-known-good data.
     */
-  def live: ZLayer[JwksFetcher & JwksProviderConfig & Scope, Nothing, JwksProvider] =
+  def live: ZLayer[JwksFetcher & JwksProviderConfig & Scope, JwtError, JwksProvider] =
     ZLayer.fromZIO {
       for
         fetcher <- ZIO.service[JwksFetcher]
         config <- ZIO.service[JwksProviderConfig]
+        _ <- ZIO.fromEither(validateHttpsUrl(config.jwksUrl))
         initial <- Promise.make[Nothing, Chunk[Jwk]]
         ref <- Ref.Synchronized.make[ProviderState](ProviderState(initial, lastRefresh = None))
         provider = LiveProvider(ref)
-        _ <- refreshLoop(fetcher, ref, config).forkScoped
+        // Initial fetch with retry  -  propagates JwtError on exhaustion
+        _ <- doFetch(fetcher, ref, config)
+               .retry(Schedule.exponential(Duration.ofSeconds(1)) && Schedule.recurs(20))
+        // Background periodic refresh  -  failures retain last-known-good keyset
+        _ <- (
+               ZIO.sleep(zio.Duration.fromJava(config.refreshInterval)) *>
+                 doFetch(fetcher, ref, config).catchAll(_ => ZIO.unit)
+             ).forever.forkScoped
       yield provider
     }
 
@@ -76,20 +101,14 @@ object JwksProvider:
     def keys: UIO[Chunk[Jwk]] =
       ref.get.flatMap(_.promise.await)
 
-  private def refreshLoop(
-    fetcher: JwksFetcher,
-    ref: Ref.Synchronized[ProviderState],
-    config: JwksProviderConfig
-  ): UIO[Unit] =
-    val initialFetch = doFetch(fetcher, ref, config)
-      .retry(Schedule.exponential(Duration.ofSeconds(1)) && Schedule.recurs(20))
-      .orDie
-    val periodicRefresh = (
-      ZIO.sleep(zio.Duration.fromJava(config.refreshInterval)) *>
-        doFetch(fetcher, ref, config).catchAll(_ => ZIO.unit)
-    ).forever
-    initialFetch *> periodicRefresh
-  end refreshLoop
+  /** Validates that the JWKS URL uses the HTTPS scheme. */
+  private inline def validateHttpsUrl(url: java.net.URI): Either[JwtError, Unit] =
+    import scala.language.unsafeNulls
+    Either.cond(
+      url.getScheme == "https",
+      (),
+      JwtError.MalformedToken(s"JWKS URL must use HTTPS scheme, got: ${url.getScheme}")
+    )
 
   private def doFetch(
     fetcher: JwksFetcher,

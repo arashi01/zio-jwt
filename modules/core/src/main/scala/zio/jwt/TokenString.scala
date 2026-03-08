@@ -23,7 +23,11 @@ package zio.jwt
 import boilerplate.OpaqueType
 
 /** Validated compact-serialisation JWT token (three dot-separated base64url segments). Validation
-  * is a single-pass character scan per ss15 (no regular expressions).
+  * is a single-pass character scan (no regular expressions).
+  *
+  * Guarantees exactly three non-empty segments separated by dots, where each segment contains only
+  * valid base64url characters ([A-Za-z0-9_-]). Does NOT guarantee that segments are decodable
+  * base64url -- decodability is checked at parse time by [[JwtValidator$ JwtValidator]].
   */
 opaque type TokenString = String
 

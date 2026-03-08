@@ -45,7 +45,7 @@ object SignatureEngine:
   def sign(data: Array[Byte], key: SecretKey, alg: Algorithm): Either[JwtError, Array[Byte]] =
     alg.family match
       case AlgorithmFamily.HMAC => hmacSign(data, key, alg)
-      case _                    => Left(JwtError.MalformedToken(IllegalArgumentException("SecretKey is only valid for HMAC algorithms")))
+      case _                    => Left(JwtError.InvalidKey("SecretKey is only valid for HMAC algorithms"))
 
   /** Signs `data` with the given algorithm and private key. Returns raw signature bytes. */
   def sign(data: Array[Byte], key: PrivateKey, alg: Algorithm): Either[JwtError, Array[Byte]] =
@@ -57,14 +57,14 @@ object SignatureEngine:
           sigLen <- EcdsaCodec
                       .signatureLength(alg)
                       .toRight(
-                        JwtError.MalformedToken(
-                          IllegalArgumentException(s"No signature length for ${alg.toString}")
+                        JwtError.InvalidKey(
+                          s"No signature length for ${alg.toString}"
                         )
                       )
           der <- jcaSign(data, key, alg.jcaName, None)
           concat <- EcdsaCodec.derToConcat(der, sigLen)
         yield concat
-      case AlgorithmFamily.HMAC => Left(JwtError.MalformedToken(IllegalArgumentException("PrivateKey is not valid for HMAC algorithms")))
+      case AlgorithmFamily.HMAC => Left(JwtError.InvalidKey("PrivateKey is not valid for HMAC algorithms"))
 
   /** Verifies `signature` against `data` using the given algorithm and secret key. */
   def verify(data: Array[Byte], signature: Array[Byte], key: SecretKey, alg: Algorithm): Either[JwtError, Unit] =
@@ -73,7 +73,7 @@ object SignatureEngine:
         hmacSign(data, key, alg).flatMap { computed =>
           Either.cond(ConstantTime.areEqual(computed, signature), (), JwtError.InvalidSignature)
         }
-      case _ => Left(JwtError.MalformedToken(IllegalArgumentException("SecretKey is only valid for HMAC algorithms")))
+      case _ => Left(JwtError.InvalidKey("SecretKey is only valid for HMAC algorithms"))
 
   /** Verifies `signature` against `data` using the given algorithm and public key. */
   def verify(data: Array[Byte], signature: Array[Byte], key: PublicKey, alg: Algorithm): Either[JwtError, Unit] =
@@ -86,7 +86,7 @@ object SignatureEngine:
           der <- EcdsaCodec.concatToDer(signature)
           _ <- jcaVerify(data, der, key, alg.jcaName, None)
         yield ()
-      case AlgorithmFamily.HMAC => Left(JwtError.MalformedToken(IllegalArgumentException("PublicKey is not valid for HMAC algorithms")))
+      case AlgorithmFamily.HMAC => Left(JwtError.InvalidKey("PublicKey is not valid for HMAC algorithms"))
 
   // -- RSA-PSS parameter specs --
 
@@ -107,8 +107,8 @@ object SignatureEngine:
         val bits = rsa.getModulus.bitLength()
         Either.cond(bits >= MinRsaKeyBits,
                     (),
-                    JwtError.MalformedToken(
-                      IllegalArgumentException(s"RSA key must be at least $MinRsaKeyBits bits, got $bits")
+                    JwtError.InvalidKey(
+                      s"RSA key must be at least $MinRsaKeyBits bits, got $bits"
                     )
         )
       case _ =>
@@ -125,7 +125,7 @@ object SignatureEngine:
       val mac = Mac.getInstance(alg.jcaName)
       mac.init(key)
       mac.doFinal(data)
-    }.toEither.left.map(e => JwtError.MalformedToken(e))
+    }.toEither.left.map(e => JwtError.InvalidKey(e.getMessage.nn))
 
   // -- JCA Signature helpers --
 
@@ -142,7 +142,7 @@ object SignatureEngine:
       sig.initSign(key)
       sig.update(data)
       sig.sign()
-    }.toEither.left.map(e => JwtError.MalformedToken(e))
+    }.toEither.left.map(e => JwtError.InvalidKey(e.getMessage.nn))
   end jcaSign
 
   private def jcaVerify(

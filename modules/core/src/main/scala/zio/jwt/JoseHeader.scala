@@ -25,5 +25,7 @@ final case class JoseHeader(
   alg: Algorithm,
   typ: Option[String],
   cty: Option[String],
-  kid: Option[Kid]
+  kid: Option[Kid],
+  x5t: Option[Base64UrlString],
+  x5tS256: Option[Base64UrlString]
 ) derives CanEqual

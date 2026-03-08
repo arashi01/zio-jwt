@@ -111,7 +111,9 @@ val issuerConfig = JwtIssuerConfig(
   algorithm = Algorithm.ES256,
   kid = Some(Kid.fromUnsafe("my-key-1")),
   typ = Some("JWT"),
-  cty = None
+  cty = None,
+  x5t = None,
+  x5tS256 = None
 )
 
 val program: IO[JwtError, TokenString] =

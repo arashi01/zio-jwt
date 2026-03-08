@@ -119,16 +119,16 @@ class SignatureEngineSuite extends munit.FunSuite:
     val result = SignatureEngine.sign(testData, weakRsaKeyPair.getPrivate, Algorithm.RS256)
     assert(result.isLeft)
     result.left.toOption.get match
-      case JwtError.MalformedToken(_) => () // expected
-      case other                      => fail(s"Expected MalformedToken, got $other")
+      case JwtError.InvalidKey(_) => () // expected
+      case other                  => fail(s"Expected InvalidKey, got $other")
   }
 
   test("RSA rejects weak key on verify") {
     val result = SignatureEngine.verify(testData, Array[Byte](1), weakRsaKeyPair.getPublic, Algorithm.RS256)
     assert(result.isLeft)
     result.left.toOption.get match
-      case JwtError.MalformedToken(_) => () // expected
-      case other                      => fail(s"Expected MalformedToken, got $other")
+      case JwtError.InvalidKey(_) => () // expected
+      case other                  => fail(s"Expected InvalidKey, got $other")
   }
 
   // -- ECDSA tests --
@@ -184,8 +184,8 @@ class SignatureEngineSuite extends munit.FunSuite:
     val result = SignatureEngine.sign(testData, weakRsaKeyPair.getPrivate, Algorithm.PS256)
     assert(result.isLeft)
     result.left.toOption.get match
-      case JwtError.MalformedToken(_) => ()
-      case other                      => fail(s"Expected MalformedToken, got $other")
+      case JwtError.InvalidKey(_) => ()
+      case other                  => fail(s"Expected InvalidKey, got $other")
   }
 
   // -- Key type mismatch tests --

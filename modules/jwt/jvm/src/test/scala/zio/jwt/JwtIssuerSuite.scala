@@ -42,8 +42,8 @@ class JwtIssuerSuite extends ZSuite:
 
   private given JwtCodec[Unit] = new JwtCodec[Unit]:
     def decode(bytes: Array[Byte]): Either[Throwable, Unit] = Right(())
-    def encode(value: Unit): Array[Byte] =
-      "{}".getBytes(StandardCharsets.UTF_8)
+    def encode(value: Unit): Either[Throwable, Array[Byte]] =
+      Right("{}".getBytes(StandardCharsets.UTF_8))
 
   // -- Key generation --
 
@@ -84,7 +84,7 @@ class JwtIssuerSuite extends ZSuite:
   testZ("issues a valid HMAC HS256 token") {
     val jwk = Jwk.from(hmac256Key, Some(Kid.fromUnsafe("k1"))).toOption.get
     val keySource = KeySource.static(jwk)
-    val issuerConfig = JwtIssuerConfig(Algorithm.HS256, Some(Kid.fromUnsafe("k1")), None, None)
+    val issuerConfig = JwtIssuerConfig(Algorithm.HS256, Some(Kid.fromUnsafe("k1")), None, None, None, None)
     val claims = RegisteredClaims(Some("test-issuer"), None, None, None, None, None, None)
     ZIO
       .serviceWithZIO[JwtIssuer](_.issue[Unit]((), claims))
@@ -98,7 +98,7 @@ class JwtIssuerSuite extends ZSuite:
   testZ("HMAC HS256 issue-then-validate round-trip") {
     val jwk = Jwk.from(hmac256Key, Some(Kid.fromUnsafe("k1"))).toOption.get
     val keySource = KeySource.static(jwk)
-    val issuerConfig = JwtIssuerConfig(Algorithm.HS256, Some(Kid.fromUnsafe("k1")), None, None)
+    val issuerConfig = JwtIssuerConfig(Algorithm.HS256, Some(Kid.fromUnsafe("k1")), None, None, None, None)
     val claims = RegisteredClaims(Some("roundtrip-iss"), Some("user-1"), None, None, None, None, None)
     val layer = issuerLayer(issuerConfig, keySource) ++ validatorLayer(validConfig(Algorithm.HS256), keySource)
     (for
@@ -118,7 +118,7 @@ class JwtIssuerSuite extends ZSuite:
     val privJwk = Jwk.from(rsaKeyPair.getPrivate, rsaKeyPair.getPublic, Some(Kid.fromUnsafe("rsa1"))).toOption.get
     val signingSource = KeySource.static(privJwk)
     val verifySource = KeySource.static(pubJwk)
-    val issuerConfig = JwtIssuerConfig(Algorithm.RS256, Some(Kid.fromUnsafe("rsa1")), None, None)
+    val issuerConfig = JwtIssuerConfig(Algorithm.RS256, Some(Kid.fromUnsafe("rsa1")), None, None, None, None)
     val claims = RegisteredClaims(None, Some("rsa-user"), None, None, None, None, None)
     val layer = issuerLayer(issuerConfig, signingSource) ++ validatorLayer(validConfig(Algorithm.RS256), verifySource)
     (for
@@ -139,7 +139,7 @@ class JwtIssuerSuite extends ZSuite:
     val privJwk = Jwk.from(priv, pub, Some(Kid.fromUnsafe("ec1"))).toOption.get
     val signingSource = KeySource.static(privJwk)
     val verifySource = KeySource.static(pubJwk)
-    val issuerConfig = JwtIssuerConfig(Algorithm.ES256, Some(Kid.fromUnsafe("ec1")), None, None)
+    val issuerConfig = JwtIssuerConfig(Algorithm.ES256, Some(Kid.fromUnsafe("ec1")), None, None, None, None)
     val claims = RegisteredClaims(None, Some("ec-user"), None, None, None, None, None)
     val layer = issuerLayer(issuerConfig, signingSource) ++ validatorLayer(validConfig(Algorithm.ES256), verifySource)
     (for
@@ -156,7 +156,7 @@ class JwtIssuerSuite extends ZSuite:
   testZ("round-trip preserves registered claims") {
     val jwk = Jwk.from(hmac256Key, Some(Kid.fromUnsafe("k1"))).toOption.get
     val keySource = KeySource.static(jwk)
-    val issuerConfig = JwtIssuerConfig(Algorithm.HS256, Some(Kid.fromUnsafe("k1")), Some("JWT"), None)
+    val issuerConfig = JwtIssuerConfig(Algorithm.HS256, Some(Kid.fromUnsafe("k1")), Some("JWT"), None, None, None)
     val claims = RegisteredClaims(
       iss = Some("my-service"),
       sub = Some("subject-1"),
@@ -188,7 +188,7 @@ class JwtIssuerSuite extends ZSuite:
   testZ("issuer constructs header with typ and kid from config") {
     val jwk = Jwk.from(hmac256Key, Some(Kid.fromUnsafe("cfg-kid"))).toOption.get
     val keySource = KeySource.static(jwk)
-    val issuerConfig = JwtIssuerConfig(Algorithm.HS256, Some(Kid.fromUnsafe("cfg-kid")), Some("JWT"), Some("jwt"))
+    val issuerConfig = JwtIssuerConfig(Algorithm.HS256, Some(Kid.fromUnsafe("cfg-kid")), Some("JWT"), Some("jwt"), None, None)
     val claims = RegisteredClaims(None, None, None, None, None, None, None)
     val config = validConfig(Algorithm.HS256)
     val layer = issuerLayer(issuerConfig, keySource) ++ validatorLayer(config, keySource)

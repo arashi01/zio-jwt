@@ -89,18 +89,20 @@ object JwtIssuer:
   ) extends JwtIssuer:
 
     def issue[A: JwtCodec](claims: A, registeredClaims: RegisteredClaims): IO[JwtError, TokenString] =
-      val header = JoseHeader(config.algorithm, config.typ, config.cty, config.kid)
-      val headerB64 = base64UrlEncode(headerCodec.encode(header))
-      val customBytes = summon[JwtCodec[A]].encode(claims)
-      val registeredBytes = claimsCodec.encode(registeredClaims)
-      val payloadB64 = base64UrlEncode(mergeJsonObjects(customBytes, registeredBytes))
-      val signingInput = s"$headerB64.$payloadB64".getBytes(StandardCharsets.US_ASCII)
+      val header = JoseHeader(config.algorithm, config.typ, config.cty, config.kid, config.x5t, config.x5tS256)
       for
+        headerBytes <- ZIO.fromEither(headerCodec.encode(header).left.map(e => JwtError.DecodeError(e.getMessage.nn)))
+        headerB64 = base64UrlEncode(headerBytes)
+        customBytes <- ZIO.fromEither(summon[JwtCodec[A]].encode(claims).left.map(e => JwtError.DecodeError(e.getMessage.nn)))
+        registeredBytes <- ZIO.fromEither(claimsCodec.encode(registeredClaims).left.map(e => JwtError.DecodeError(e.getMessage.nn)))
+        payloadB64 = base64UrlEncode(mergeJsonObjects(customBytes, registeredBytes))
+        signingInput = s"$headerB64.$payloadB64".getBytes(StandardCharsets.US_ASCII)
         signatureBytes <- sign(header, signingInput)
         signatureB64 = base64UrlEncode(signatureBytes)
         tokenRaw = s"$headerB64.$payloadB64.$signatureB64"
-        token <- ZIO.fromEither(TokenString.from(tokenRaw).left.map(e => JwtError.MalformedToken(e)))
+        token <- ZIO.fromEither(TokenString.from(tokenRaw).left.map(e => JwtError.MalformedToken(e.getMessage.nn)))
       yield token
+      end for
     end issue
 
     private inline def sign(header: JoseHeader, data: Array[Byte]): IO[JwtError, Array[Byte]] =

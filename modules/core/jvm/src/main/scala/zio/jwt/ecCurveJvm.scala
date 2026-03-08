@@ -26,7 +26,7 @@ import java.security.spec.ECGenParameterSpec
 import java.security.spec.ECParameterSpec
 
 // JVM-specific extensions on EcCurve requiring JCA types.
-// Discoverable via `import zio.jwt.*` (ss13).
+// Discoverable via `import zio.jwt.*`.
 
 private lazy val p256Spec: ECParameterSpec = loadEcSpec("secp256r1")
 private lazy val p384Spec: ECParameterSpec = loadEcSpec("secp384r1")

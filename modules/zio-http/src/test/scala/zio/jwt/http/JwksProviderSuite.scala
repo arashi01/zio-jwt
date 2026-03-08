@@ -111,7 +111,7 @@ class JwksProviderSuite extends ZSuite:
         fetcher = StubFetcher(callCount,
                               n =>
                                 if n == 0 then ZIO.succeed(JwkSet(Chunk(jwk)))
-                                else ZIO.fail(JwtError.MalformedToken(RuntimeException("network error")))
+                                else ZIO.fail(JwtError.MalformedToken("network error"))
                   )
         provider <- JwksProvider.live.build
                       .provideSome[Scope](
@@ -150,6 +150,26 @@ class JwksProviderSuite extends ZSuite:
       yield
         // With 500ms min refresh and only 200ms elapsed, should be 1 (initial) + maybe 1 more
         assert(count <= 2, s"Expected at most 2 fetches, got $count (rate limiting should prevent more)")
+    }
+  }
+
+  testZ("rejects non-HTTPS JWKS URL") {
+    val httpConfig = JwksProviderConfig(
+      jwksUrl = java.net.URI.create("http://example.com/.well-known/jwks.json"),
+      refreshInterval = Duration.ofMillis(50),
+      minRefreshInterval = Duration.ofMillis(10)
+    )
+    ZIO.scoped {
+      for
+        callCount <- Ref.make(0)
+        fetcher = StubFetcher(callCount, _ => ZIO.succeed(JwkSet(Chunk.empty)))
+        result <- JwksProvider.live.build
+                    .provideSome[Scope](
+                      ZLayer.succeed(fetcher: JwksFetcher),
+                      ZLayer.succeed(httpConfig)
+                    )
+                    .either
+      yield assert(result.isLeft, "Expected failure for non-HTTPS URL")
     }
   }
 end JwksProviderSuite

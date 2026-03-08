@@ -100,7 +100,7 @@ end Jwk
 /** Companion for [[Jwk]]. Provides JCA key conversion, factory methods, and filtering extensions. */
 object Jwk:
 
-  // -- Base64url <-> BigInteger utilities (ss5.4) --
+  // -- Base64url <-> BigInteger utilities --
 
   private val base64UrlDecoder = java.util.Base64.getUrlDecoder
   private val base64UrlEncoder = java.util.Base64.getUrlEncoder.withoutPadding()
@@ -111,7 +111,7 @@ object Jwk:
       import scala.language.unsafeNulls
       val bytes = base64UrlDecoder.decode(b64.asInstanceOf[String]) // scalafix:ok DisableSyntax.asInstanceOf; Bypass opaque type allowing use of deferred inline methods.
       BigInteger(1, bytes)
-    }.toEither.left.map(e => JwtError.MalformedToken(e))
+    }.toEither.left.map(e => JwtError.InvalidKey(e.getMessage.nn))
 
   /** Encodes a positive BigInteger as base64url without padding, stripping the sign byte. */
   private inline def encodeBigInt(value: BigInteger): Base64UrlString =
@@ -138,7 +138,7 @@ object Jwk:
 
   private val MinRsaKeyBits = 2048
 
-  // -- JWK -> JCA key conversion (ss8.3) --
+  // -- JWK -> JCA key conversion --
 
   extension (jwk: Jwk)
 
@@ -149,26 +149,26 @@ object Jwk:
       case rsa: Jwk.RsaPublicKey  => rsaToPublicKey(rsa.n, rsa.e)
       case rsa: Jwk.RsaPrivateKey => rsaToPublicKey(rsa.n, rsa.e)
       case _: Jwk.SymmetricKey    =>
-        Left(JwtError.MalformedToken(IllegalArgumentException("Symmetric keys do not have a public key")))
+        Left(JwtError.InvalidKey("Symmetric keys do not have a public key"))
 
     /** Converts this JWK to a JCA [[PrivateKey]]. */
     def toPrivateKey: Either[JwtError, PrivateKey] = jwk match
       case ec: Jwk.EcPrivateKey   => ecToPrivateKey(ec.crv, ec.d)
       case rsa: Jwk.RsaPrivateKey => rsaToPrivateKey(rsa.n, rsa.e, rsa.d, rsa.p, rsa.q, rsa.dp, rsa.dq, rsa.qi)
       case _: Jwk.EcPublicKey     =>
-        Left(JwtError.MalformedToken(IllegalArgumentException("EC public key does not contain a private key")))
+        Left(JwtError.InvalidKey("EC public key does not contain a private key"))
       case _: Jwk.RsaPublicKey =>
-        Left(JwtError.MalformedToken(IllegalArgumentException("RSA public key does not contain a private key")))
+        Left(JwtError.InvalidKey("RSA public key does not contain a private key"))
       case _: Jwk.SymmetricKey =>
-        Left(JwtError.MalformedToken(IllegalArgumentException("Symmetric keys do not have a private key")))
+        Left(JwtError.InvalidKey("Symmetric keys do not have a private key"))
 
     /** Converts this JWK to a JCA [[SecretKey]]. */
     def toSecretKey: Either[JwtError, SecretKey] = jwk match
       case sym: Jwk.SymmetricKey => symmetricToSecretKey(sym.k, sym.alg)
       case _                     =>
-        Left(JwtError.MalformedToken(IllegalArgumentException("Only symmetric keys can be converted to SecretKey")))
+        Left(JwtError.InvalidKey("Only symmetric keys can be converted to SecretKey"))
 
-    /** Tests whether this key is suitable for signature verification per ss8.5. */
+    /** Tests whether this key is suitable for signature verification. */
     @targetName("jwkSuitableForVerification")
     def suitableForVerification(headerAlg: Algorithm): Boolean =
       val useOk = jwk.keyUse.forall(_ == KeyUse.Sig)
@@ -176,7 +176,7 @@ object Jwk:
       val algOk = jwk.keyAlgorithm.forall(_ == headerAlg)
       useOk && opsOk && algOk
 
-    /** Tests whether this key is suitable for signing per ss8.5 (mirror of verification). */
+    /** Tests whether this key is suitable for signing. */
     @targetName("jwkSuitableForSigning")
     def suitableForSigning(headerAlg: Algorithm): Boolean =
       val useOk = jwk.keyUse.forall(_ == KeyUse.Sig)
@@ -217,7 +217,7 @@ object Jwk:
       case k: Jwk.SymmetricKey  => k.kid
   end extension
 
-  // Multi-parameter extension aliases (ss1.4)
+  // Multi-parameter extension aliases
 
   /** Tests whether a key is suitable for signature verification with the given algorithm. */
   inline def suitableForVerification(jwk: Jwk, alg: Algorithm): Boolean =
@@ -227,7 +227,7 @@ object Jwk:
   inline def suitableForSigning(jwk: Jwk, alg: Algorithm): Boolean =
     jwk.suitableForSigning(alg)
 
-  // -- JCA key -> JWK factory methods (ss8.4) --
+  // -- JCA key -> JWK factory methods --
 
   /** Creates a [[Jwk]] from a JCA [[PublicKey]]. */
   def from(key: PublicKey, kid: Option[Kid]): Either[JwtError, Jwk] =
@@ -235,7 +235,7 @@ object Jwk:
     key match
       case ec: JcaEcPublicKey   => fromEcPublicKey(ec, kid)
       case rsa: JcaRsaPublicKey => fromRsaPublicKey(rsa, kid)
-      case _ => Left(JwtError.MalformedToken(IllegalArgumentException(s"Unsupported public key type: ${key.getClass.getName}")))
+      case _                    => Left(JwtError.InvalidKey(s"Unsupported public key type: ${key.getClass.getName}"))
 
   /** Creates a [[Jwk]] from a JCA [[PublicKey]] without a key identifier. */
   def from(key: PublicKey): Either[JwtError, Jwk] = from(key, None)
@@ -248,8 +248,8 @@ object Jwk:
       case (rsa: JcaRsaPrivateCrtKey, rsaPub: JcaRsaPublicKey) => fromRsaPrivateKey(rsa, rsaPub, kid)
       case _                                                   =>
         Left(
-          JwtError.MalformedToken(
-            IllegalArgumentException(s"Unsupported key pair types: ${key.getClass.getName}, ${publicKey.getClass.getName}")
+          JwtError.InvalidKey(
+            s"Unsupported key pair types: ${key.getClass.getName}, ${publicKey.getClass.getName}"
           )
         )
 
@@ -258,7 +258,7 @@ object Jwk:
     import scala.language.unsafeNulls
     val encoded = key.getEncoded
     if encoded == null || encoded.isEmpty then // scalafix:ok DisableSyntax.null; JCA SecretKey.getEncoded may return null
-      Left(JwtError.MalformedToken(IllegalArgumentException("SecretKey has no encoded form")))
+      Left(JwtError.InvalidKey("SecretKey has no encoded form"))
     else
       val b64 = Base64UrlString.wrap(base64UrlEncoder.encodeToString(encoded))
       Right(Jwk.SymmetricKey(k = b64, use = None, keyOps = None, alg = None, kid = kid))
@@ -278,7 +278,7 @@ object Jwk:
                import scala.language.unsafeNulls
                val spec = ECPublicKeySpec(point, crv.spec)
                KeyFactory.getInstance("EC").generatePublic(spec)
-             }.toEither.left.map(e => JwtError.MalformedToken(e))
+             }.toEither.left.map(e => JwtError.InvalidKey(e.getMessage.nn))
     yield key
 
   private inline def ecToPrivateKey(crv: EcCurve, dB64: Base64UrlString): Either[JwtError, PrivateKey] =
@@ -288,7 +288,7 @@ object Jwk:
                import scala.language.unsafeNulls
                val spec = ECPrivateKeySpec(d, crv.spec)
                KeyFactory.getInstance("EC").generatePrivate(spec)
-             }.toEither.left.map(e => JwtError.MalformedToken(e))
+             }.toEither.left.map(e => JwtError.InvalidKey(e.getMessage.nn))
     yield key
 
   private inline def rsaToPublicKey(nB64: Base64UrlString, eB64: Base64UrlString): Either[JwtError, PublicKey] =
@@ -297,8 +297,8 @@ object Jwk:
       _ <- Either.cond(
              n.bitLength() >= MinRsaKeyBits,
              (),
-             JwtError.MalformedToken(
-               IllegalArgumentException(s"RSA key must be at least $MinRsaKeyBits bits, got ${n.bitLength()}")
+             JwtError.InvalidKey(
+               s"RSA key must be at least $MinRsaKeyBits bits, got ${n.bitLength()}"
              )
            )
       e <- decodeBigInt(eB64)
@@ -306,7 +306,7 @@ object Jwk:
                import scala.language.unsafeNulls
                val spec = RSAPublicKeySpec(n, e)
                KeyFactory.getInstance("RSA").generatePublic(spec)
-             }.toEither.left.map(e => JwtError.MalformedToken(e))
+             }.toEither.left.map(e => JwtError.InvalidKey(e.getMessage.nn))
     yield key
 
   private inline def rsaToPrivateKey(
@@ -324,8 +324,8 @@ object Jwk:
       _ <- Either.cond(
              n.bitLength() >= MinRsaKeyBits,
              (),
-             JwtError.MalformedToken(
-               IllegalArgumentException(s"RSA key must be at least $MinRsaKeyBits bits, got ${n.bitLength()}")
+             JwtError.InvalidKey(
+               s"RSA key must be at least $MinRsaKeyBits bits, got ${n.bitLength()}"
              )
            )
       e <- decodeBigInt(eB64)
@@ -339,7 +339,7 @@ object Jwk:
                import scala.language.unsafeNulls
                val spec = RSAPrivateCrtKeySpec(n, e, d, p, q, dp, dq, qi)
                KeyFactory.getInstance("RSA").generatePrivate(spec)
-             }.toEither.left.map(e => JwtError.MalformedToken(e))
+             }.toEither.left.map(e => JwtError.InvalidKey(e.getMessage.nn))
     yield key
 
   private inline def symmetricToSecretKey(kB64: Base64UrlString, alg: Option[Algorithm]): Either[JwtError, SecretKey] =
@@ -348,7 +348,7 @@ object Jwk:
       val bytes = base64UrlDecoder.decode(kB64.asInstanceOf[String]) // scalafix:ok DisableSyntax.asInstanceOf; Bypass opaque type allowing use of deferred inline methods.
       val jcaAlg = alg.fold("HmacSHA256")(_.jcaName)
       SecretKeySpec(bytes, jcaAlg): SecretKey
-    }.toEither.left.map(e => JwtError.MalformedToken(e))
+    }.toEither.left.map(e => JwtError.InvalidKey(e.getMessage.nn))
 
   // -- Internal JCA -> JWK helpers --
 
@@ -359,7 +359,7 @@ object Jwk:
       case 256 => Right(EcCurve.P256)
       case 384 => Right(EcCurve.P384)
       case 521 => Right(EcCurve.P521)
-      case _   => Left(JwtError.MalformedToken(IllegalArgumentException(s"Unsupported EC field size: $fieldSize")))
+      case _   => Left(JwtError.InvalidKey(s"Unsupported EC field size: $fieldSize"))
 
   private inline def fromEcPublicKey(ec: JcaEcPublicKey, kid: Option[Kid]): Either[JwtError, Jwk] =
     import scala.language.unsafeNulls
@@ -387,10 +387,8 @@ object Jwk:
     Either.cond(
       rsa.getModulus.bitLength() >= MinRsaKeyBits,
       Jwk.RsaPublicKey(n = n, e = e, use = None, keyOps = None, alg = None, kid = kid),
-      JwtError.MalformedToken(
-        IllegalArgumentException(
-          s"RSA key must be at least $MinRsaKeyBits bits, got ${rsa.getModulus.bitLength()}"
-        )
+      JwtError.InvalidKey(
+        s"RSA key must be at least $MinRsaKeyBits bits, got ${rsa.getModulus.bitLength()}"
       )
     )
   end fromRsaPublicKey
@@ -413,10 +411,8 @@ object Jwk:
         alg = None,
         kid = kid
       ),
-      JwtError.MalformedToken(
-        IllegalArgumentException(
-          s"RSA key must be at least $MinRsaKeyBits bits, got ${rsaPub.getModulus.bitLength()}"
-        )
+      JwtError.InvalidKey(
+        s"RSA key must be at least $MinRsaKeyBits bits, got ${rsaPub.getModulus.bitLength()}"
       )
     )
   end fromRsaPrivateKey

@@ -26,13 +26,13 @@ import java.security.spec.ECPoint
 
 import zio.jwt.*
 
-/** ECDSA sanity checks (ss7.2), point-on-curve validation (ss7.3), and algorithm-to-curve mapping. */
+/** ECDSA sanity checks, point-on-curve validation, and algorithm-to-curve mapping. */
 object EcParams:
 
-  // -- ECDSA signature sanity checks (ss7.2) --
+  // -- ECDSA signature sanity checks --
 
-  /** Validates an ECDSA signature per ss7.2 (CVE-2022-21449 mitigations). Must be called before
-    * passing the signature to JCA `verify()`.
+  /** Validates an ECDSA signature (CVE-2022-21449 mitigations). Must be called before passing the
+    * signature to JCA `verify()`.
     */
   def validateSignature(alg: Algorithm, signature: Array[Byte]): Either[JwtError, Unit] =
     for
@@ -61,7 +61,7 @@ object EcParams:
       _ <- Either.cond(r.mod(n).signum() > 0 && s.mod(n).signum() > 0, (), JwtError.InvalidSignature)
     yield ()
 
-  // -- EC point-on-curve validation (ss7.3) --
+  // -- EC point-on-curve validation --
 
   /** Validates that the point (x, y) lies on the specified curve: y^2 mod p = (x^3 + ax + b) mod p. */
   def validatePointOnCurve(crv: EcCurve, point: ECPoint): Either[JwtError, Unit] =
@@ -87,15 +87,15 @@ object EcParams:
 
         Either.cond(lhs.compareTo(rhs) == 0,
                     (),
-                    JwtError.MalformedToken(
-                      IllegalArgumentException("EC point is not on the curve")
+                    JwtError.InvalidKey(
+                      "EC point is not on the curve"
                     )
         )
 
       case _ =>
         Left(
-          JwtError.MalformedToken(
-            IllegalArgumentException("Unsupported EC field type")
+          JwtError.InvalidKey(
+            "Unsupported EC field type"
           )
         )
     end match

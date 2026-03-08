@@ -62,20 +62,35 @@ class JwtErrorSuite extends munit.FunSuite:
     assertEquals(JwtError.InvalidSignature.getMessage, "Invalid signature")
   }
 
-  test("MalformedToken getMessage wraps cause message") {
-    val cause = RuntimeException("unexpected EOF")
-    val err = JwtError.MalformedToken(cause)
+  test("MalformedToken getMessage wraps message") {
+    val err = JwtError.MalformedToken("unexpected EOF")
     assert(err.getMessage.contains("unexpected EOF"))
   }
 
-  test("MalformedToken getCause returns wrapped throwable") {
-    val cause = RuntimeException("parse failure")
-    val err = JwtError.MalformedToken(cause)
-    assertEquals(err.getCause, cause)
+  test("DecodeError getMessage wraps message") {
+    val err = JwtError.DecodeError("invalid JSON")
+    assert(err.getMessage.contains("invalid JSON"))
   }
 
-  test("non-MalformedToken getCause returns null") {
+  test("InvalidKey getMessage wraps message") {
+    val err = JwtError.InvalidKey("RSA key too small")
+    assert(err.getMessage.contains("RSA key too small"))
+  }
+
+  test("InvalidTyp getMessage includes expected and actual") {
+    val err = JwtError.InvalidTyp("JWT", Some("at+jwt"))
+    assert(err.getMessage.contains("JWT"))
+    assert(err.getMessage.contains("at+jwt"))
+  }
+
+  test("InvalidTyp getMessage handles missing typ") {
+    val err = JwtError.InvalidTyp("JWT", None)
+    assert(err.getMessage.contains("none"))
+  }
+
+  test("getCause returns null for all variants") {
     assertEquals(JwtError.InvalidSignature.getCause, null) // scalafix:ok DisableSyntax.null; testing JDK getCause contract
+    assertEquals(JwtError.MalformedToken("test").getCause, null) // scalafix:ok DisableSyntax.null; testing JDK getCause contract
   }
 
   test("UnsupportedAlgorithm getMessage includes algorithm name") {
@@ -91,6 +106,18 @@ class JwtErrorSuite extends munit.FunSuite:
   test("KeyNotFound getMessage handles absent kid") {
     val err = JwtError.KeyNotFound(None)
     assert(err.getMessage.contains("Key not found"))
+  }
+
+  test("AmbiguousKey getMessage includes kid when present") {
+    val err = JwtError.AmbiguousKey(Some(Kid.fromUnsafe("rsa-1")), 3)
+    assert(err.getMessage.contains("rsa-1"))
+    assert(err.getMessage.contains("3"))
+  }
+
+  test("AmbiguousKey getMessage handles absent kid") {
+    val err = JwtError.AmbiguousKey(None, 5)
+    assert(err.getMessage.contains("Ambiguous key"))
+    assert(err.getMessage.contains("5"))
   }
 
   test("extends NoStackTrace (no stack trace captured)") {

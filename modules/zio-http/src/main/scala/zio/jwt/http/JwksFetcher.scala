@@ -60,20 +60,20 @@ object JwksFetcher:
     def fetch: IO[JwtError, JwkSet] =
       URL.fromURI(config.jwksUrl) match
         case None =>
-          ZIO.fail(JwtError.MalformedToken(IllegalArgumentException(s"Invalid JWKS URL: ${config.jwksUrl}")))
+          ZIO.fail(JwtError.MalformedToken(s"Invalid JWKS URL: ${config.jwksUrl}"))
         case Some(url) =>
           val request = Request.get(url)
           (for
-            response <- Client.batched(request).mapError(e => JwtError.MalformedToken(e))
+            response <- Client.batched(request).mapError(e => JwtError.MalformedToken(e.getMessage.nn))
             _ <- ZIO.when(!response.status.isSuccess)(
                    ZIO.fail(
                      JwtError.MalformedToken(
-                       RuntimeException(s"JWKS fetch returned HTTP ${response.status.code}")
+                       s"JWKS fetch returned HTTP ${response.status.code}"
                      )
                    )
                  )
-            bytes <- response.body.asArray.mapError(e => JwtError.MalformedToken(e))
-            jwkSet <- ZIO.fromEither(jwkSetCodec.decode(bytes).left.map(JwtError.MalformedToken(_)))
+            bytes <- response.body.asArray.mapError(e => JwtError.MalformedToken(e.getMessage.nn))
+            jwkSet <- ZIO.fromEither(jwkSetCodec.decode(bytes).left.map(e => JwtError.DecodeError(e.getMessage.nn)))
           yield jwkSet).provideEnvironment(zio.ZEnvironment(client))
   end LiveFetcher
 end JwksFetcher

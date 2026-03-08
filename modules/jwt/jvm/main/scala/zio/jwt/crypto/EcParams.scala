@@ -133,11 +133,11 @@ object EcParams:
         val ax  = a.multiply(x).mod(p)
         val rhs = x3.add(ax).add(b).mod(p)
 
-        Either.cond(lhs.compareTo(rhs) == 0, (), JwtError.MalformedToken(
-          IllegalArgumentException("EC point is not on the curve")
+        Either.cond(lhs.compareTo(rhs) == 0, (), JwtError.InvalidKey(
+          "EC point is not on the curve"
         ))
 
       case _ =>
-        Left(JwtError.MalformedToken(
-          IllegalArgumentException("Unsupported EC field type")
+        Left(JwtError.InvalidKey(
+          "Unsupported EC field type"
         ))

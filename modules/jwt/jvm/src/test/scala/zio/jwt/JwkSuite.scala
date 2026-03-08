@@ -330,7 +330,7 @@ class JwkSuite extends munit.FunSuite:
     assertEquals(jwk.keyId, Some(kid))
   }
 
-  // -- Filtering tests (ss8.5) --
+  // -- Filtering tests --
 
   test("suitableForVerification: no constraints passes") {
     val jwk = Jwk.EcPublicKey(
