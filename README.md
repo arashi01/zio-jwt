@@ -1,81 +1,93 @@
 # zio-jwt
 
-Pure Scala 3 JWT library built on [ZIO](https://zio.dev) -- signing, validation, JWK, JWKS rotation, and zio-http middleware in a single dependency.
+Pure Scala 3 JWT library built on [ZIO](https://zio.dev) — signing, verification, validation, JWK, JWKS rotation, OIDC discovery, and zio-http middleware in a single dependency.
 
----
+## Features
 
-## Motivation
-
-No existing JVM JWT library provides ZIO-native token handling, non-blocking JWKS rotation, and HTTP middleware as a single cohesive dependency:
-
-| Library | Limitation |
+| Feature | Description |
 |---|---|
-| **jwt-scala** | `Try`-based API -- not ZIO-native. No JWKS support. No key rotation or background refresh. |
-| **nimbus-jose-jwt** | Java. `RemoteJWKSet` uses blocking `java.net.URL.openStream()` -- incompatible with ZIO fibres. Mutable builders. Gson transitive dependency. |
-| **jose4j** | Java. Same blocking HTTP problem. Builder patterns throughout. No Scala 3 idioms. |
-| **auth0/java-jwt** | Java. No built-in JWKS (requires separate `jwks-rsa-java`). Jackson transitive dependency. Two libraries for one concern. |
+| Token validation | Fail-fast and accumulating modes with configurable clock skew, issuer, audience, and algorithm allowlists |
+| Token issuance | Sign tokens with HMAC, RSA, ECDSA, RSA-PSS, or EdDSA |
+| JWK / JWK Set | Full key model (EC, RSA, symmetric, OKP) with JCA conversion and key-filtering by `kid`, `use`, `key_ops`, `alg` |
+| JWKS background refresh | Non-blocking fetch with exponential backoff, stampede prevention, last-known-good retention, and rate limiting |
+| OIDC Discovery | Auto-discover JWKS URLs from `/.well-known/openid-configuration` |
+| zio-http middleware | `HandlerAspect` extracting `Authorization: Bearer` tokens with typed context |
+| Cross-platform decoding | Decode tokens without signature verification on JVM, JS, and Native |
+| Structured errors | `JwtError` enum for pattern matching in the ZIO error channel |
+| Pluggable JSON | `JwtCodec[A]` trait — bring your own serialiser or use the provided jsoniter-scala codecs |
+| Strict equality | All types derive `CanEqual` for `-language:strictEquality` |
 
-With any of these, you must still build:
+### Algorithms
 
-- Non-blocking JWKS fetching via zio-http (or equivalent)
-- Key caching with background refresh and stampede prevention
-- Typed claim extraction with a codec abstraction
-- Structured error types for pattern matching in ZIO error channels
-- HTTP middleware integration (e.g. zio-http `HandlerAspect`)
-- `ZLayer` service composition wiring all of the above together
+| Family | Algorithms |
+|---|---|
+| HMAC | HS256, HS384, HS512 |
+| RSA PKCS#1 v1.5 | RS256, RS384, RS512 |
+| ECDSA | ES256 (P-256), ES384 (P-384), ES512 (P-521) |
+| RSA-PSS | PS256, PS384, PS512 |
+| EdDSA | Ed25519, Ed448 |
 
-The third-party library contributes only the JWT decode/verify/encode calls -- thin wrappers around `java.security.Signature` and base64url encoding.
+`alg:none` is unconditionally rejected — the `Algorithm` enum has no `None` variant.
 
-zio-jwt provides all of the above as a single library, eliminating the third-party dependency along with its transitive classpath.
+### Standards
 
----
-
-## Modules
-
-```
-zio-jwt-core       (JVM / JS / Native)   Data types, error ADT, codec trait, JwtDecoder
-zio-jwt-jsoniter   (JVM / JS / Native)   jsoniter-scala codec instances
-zio-jwt            (JVM)                 JCA crypto, signing, validation, JWK, KeySource
-zio-http-jwt       (JVM)                 zio-http middleware, JWKS client, background refresh
-```
-
-```
-zio-jwt-core  <--  zio-jwt  <--  zio-http-jwt
-      ^                ^
-      +----------------+----  zio-jwt-jsoniter
-```
+| Standard | Coverage |
+|---|---|
+| RFC 7519 — JWT | Complete |
+| RFC 7515 — JWS | Complete (incl. `crit` header processing) |
+| RFC 7517 — JWK | Complete (EC, RSA, oct, OKP) |
+| RFC 7518 — JWA | Complete (HMAC, RSA, ECDSA, RSA-PSS, EdDSA) |
+| RFC 8037 — EdDSA / OKP | Complete |
+| OpenID Connect Discovery 1.0 | JWKS URI resolution |
 
 ---
 
 ## Installation
 
 ```scala
-// build.sbt
-val zioJwtVersion = "<version>"
-
-libraryDependencies += "io.github.arashi01" %%% "zio-jwt-core"     % zioJwtVersion // cross-platform
-libraryDependencies += "io.github.arashi01" %%% "zio-jwt-jsoniter" % zioJwtVersion // cross-platform
-libraryDependencies += "io.github.arashi01" %%  "zio-jwt"          % zioJwtVersion // JVM only
-libraryDependencies += "io.github.arashi01" %%  "zio-http-jwt"     % zioJwtVersion // JVM only
+// build.sbt — pick the modules you need
+libraryDependencies ++= Seq(
+  "io.github.arashi01" %%% "zio-jwt-core"     % "<version>", // cross-platform types and decoding
+  "io.github.arashi01" %%% "zio-jwt-jsoniter"  % "<version>", // jsoniter-scala codec instances
+  "io.github.arashi01" %%  "zio-jwt"           % "<version>", // JVM — signing, verification, JWK
+  "io.github.arashi01" %%  "zio-http-jwt"      % "<version>"  // JVM — zio-http middleware, JWKS, OIDC
+)
 ```
 
----
+### Modules
 
-## Usage
+```
+zio-jwt-core       (JVM / JS / Native)   Types, error ADT, codec trait, JwtDecoder
+zio-jwt-jsoniter   (JVM / JS / Native)   jsoniter-scala codec instances
+zio-jwt            (JVM)                 JCA signing, verification, validation, JWK
+zio-http-jwt       (JVM)                 zio-http middleware, JWKS client, OIDC discovery
+```
+
+```
+zio-jwt-core  ◂──  zio-jwt  ◂──  zio-http-jwt
+      ▴                ▴
+      └────────────────┴──  zio-jwt-jsoniter
+```
+
+Most JVM applications need `zio-http-jwt` (which transitively brings `zio-jwt`, `zio-jwt-core`, and `zio-jwt-jsoniter`).
 
 ### Imports
 
 ```scala
-import zio.jwt.*                  // core types, errors, config, validator, issuer
-import zio.jwt.jsoniter.given     // jsoniter codec instances (JoseHeader, RegisteredClaims, etc.)
-import zio.jwt.http.given         // JWK/JwkSet codec instances (zio-http module)
+import zio.jwt.*               // core types, errors, config, validator, issuer, JWK
+import zio.jwt.jsoniter.given  // jsoniter-scala codecs (JoseHeader, RegisteredClaims, etc.)
+import zio.jwt.http.*          // JwtMiddleware, JwksProvider, OidcDiscovery, JWK codecs
 ```
 
-### Token Validation
+---
+
+## Quick Start
+
+### Validate a Token
 
 ```scala
 import zio.*
-import zio.jwt.{given, *}
+import zio.jwt.*
 import zio.jwt.jsoniter.given
 
 final case class MyClaims(sub: String, role: String) derives CanEqual
@@ -98,13 +110,20 @@ val program: IO[JwtError, Jwt[MyClaims]] =
     )
 ```
 
-Validation is fail-fast: parse segments, decode header, reject disallowed algorithms, resolve key (by `kid` + `use`/`key_ops`/`alg` filtering), verify signature, decode claims, then validate `exp`, `nbf`, `iss`, `aud`, `typ`.
+Validation is fail-fast: parse → decode header → reject disallowed algorithms → resolve key → verify signature → decode claims → validate `exp`, `nbf`, `iss`, `aud`, `typ`.
 
-### Token Issuance
+Use `validateAll` to accumulate all claim errors instead of failing on the first:
+
+```scala
+val program: IO[NonEmptyChunk[JwtError], Jwt[MyClaims]] =
+  ZIO.serviceWithZIO[JwtValidator](_.validateAll[MyClaims](token))
+```
+
+### Issue a Token
 
 ```scala
 import zio.*
-import zio.jwt.{given, *}
+import zio.jwt.*
 import zio.jwt.jsoniter.given
 
 val issuerConfig = JwtIssuerConfig(
@@ -138,7 +157,7 @@ val program: IO[JwtError, TokenString] =
   )
 ```
 
-The issuer constructs the JOSE header from `JwtIssuerConfig` internally -- callers provide only claims.
+The JOSE header is constructed from `JwtIssuerConfig` — callers provide only claims.
 
 ### zio-http Middleware
 
@@ -148,18 +167,24 @@ import zio.http.*
 import zio.jwt.*
 import zio.jwt.http.*
 import zio.jwt.jsoniter.given
-import zio.jwt.http.given
 
-val authed: Routes[JwtValidator, Nothing] =
+val authed: Routes[JwtValidator, Response] =
   Routes(
-    Method.GET / "protected" -> handler { (req: Request) =>
-      val jwt: Jwt[MyClaims] = req.context[Jwt[MyClaims]]
-      Response.text(s"Hello ${jwt.claims.sub}")
-    }
+    Method.GET / "protected" -> handler((_: Request) =>
+      withContext((jwt: Jwt[MyClaims]) =>
+        Response.text(s"Hello ${jwt.claims.sub}")
+      )
+    )
   ) @@ JwtMiddleware.bearer[MyClaims]
 ```
 
-Extracts `Authorization: Bearer <token>`, validates via `JwtValidator`, and provides `Jwt[A]` as handler context. Returns `401 Unauthorized` with `WWW-Authenticate: Bearer` when the token is missing or invalid.
+Extracts `Authorization: Bearer <token>`, validates via `JwtValidator`, and provides the decoded `Jwt[A]` as handler context. Returns `401 Unauthorized` with `WWW-Authenticate: Bearer` when the token is missing or invalid.
+
+An overload accepts a custom error handler for differentiated responses:
+
+```scala
+JwtMiddleware.bearer[MyClaims](err => Response.text(err.getMessage).status(Status.Unauthorized))
+```
 
 ### JWKS with Background Refresh
 
@@ -169,7 +194,6 @@ import zio.http.*
 import zio.jwt.*
 import zio.jwt.http.*
 import zio.jwt.jsoniter.given
-import zio.jwt.http.given
 
 val jwksConfig = JwksProviderConfig(
   jwksUrl = java.net.URI("https://auth.example.com/.well-known/jwks.json"),
@@ -181,7 +205,7 @@ val appLayer: ZLayer[Any, Throwable, JwtValidator] =
   ZLayer.make[JwtValidator](
     JwtValidator.live,
     ZLayer.succeed(validationConfig),
-    JwksProvider.live,   // extends KeySource
+    JwksProvider.live,
     JwksFetcher.live,
     ZLayer.succeed(jwksConfig),
     Client.default,
@@ -191,84 +215,80 @@ val appLayer: ZLayer[Any, Throwable, JwtValidator] =
 
 `JwksProvider` extends `KeySource` with automatic background refresh:
 
-- Initial fetch retries with exponential backoff
-- Concurrent callers during initial fetch await the same in-flight request (stampede prevention)
-- After first success, fetch failures retain last-known-good keyset
+- Exponential backoff on initial fetch
+- Stampede prevention — concurrent callers await the same in-flight request
+- Last-known-good keyset retained on fetch failure
 - `minRefreshInterval` rate-limits refresh requests
-- Background fibre lifecycle is tied to the `Scope`
+- Background fibre lifecycle tied to `Scope`
 
-### JWK Handling
+### OIDC Discovery
+
+Automatically discover the JWKS URI from an issuer's OpenID configuration:
+
+```scala
+import zio.jwt.http.*
+
+// One-shot: resolve the JWKS URI
+val jwksUri: ZIO[Client, JwtError, java.net.URI] =
+  OidcDiscovery.jwksUri(java.net.URI("https://auth.example.com"))
+
+// Full layer: discover + background refresh
+val layer: ZLayer[Client & Scope, JwtError, JwksProvider] =
+  OidcDiscovery.provider(
+    issuerUrl = java.net.URI("https://auth.example.com"),
+    refreshInterval = java.time.Duration.ofMinutes(15),
+    minRefreshInterval = java.time.Duration.ofMinutes(1)
+  )
+```
+
+---
+
+## JWK Handling
 
 ```scala
 import zio.jwt.*
 
-// JCA key -> JWK
+// JCA key → JWK
 val jwk: Either[JwtError, Jwk] = Jwk.from(rsaPublicKey, Some(Kid.fromUnsafe("rsa-1")))
 
-// JWK -> JCA key
+// JWK → JCA key
 val key: Either[JwtError, java.security.PublicKey] = jwk.flatMap(_.toPublicKey)
 
 // Static key source
 val source: KeySource = KeySource.static(myJwk)
-val source2: KeySource = KeySource.static(Chunk(jwk1, jwk2))
+val multiSource: KeySource = KeySource.static(Chunk(jwk1, jwk2))
 ```
 
-JWK variants: `EcPublicKey`, `EcPrivateKey`, `RsaPublicKey`, `RsaPrivateKey`, `SymmetricKey`, `OkpPublicKey`, `OkpPrivateKey`. Key resolution filters by `use`, `key_ops`, `alg`, and `kid` before converting to JCA keys.
+**JWK variants:** `EcPublicKey`, `EcPrivateKey`, `RsaPublicKey`, `RsaPrivateKey`, `SymmetricKey`, `OkpPublicKey`, `OkpPrivateKey`.
 
----
-
-## Algorithms
-
-| Family | Algorithms |
-|---|---|
-| HMAC | HS256, HS384, HS512 |
-| RSA PKCS#1 v1.5 | RS256, RS384, RS512 |
-| ECDSA | ES256 (P-256), ES384 (P-384), ES512 (P-521) |
-| RSA-PSS | PS256, PS384, PS512 |
-| EdDSA (RFC 8037) | EdDSA (Ed25519, Ed448) |
-
-`alg:none` is unconditionally rejected. There is no `Algorithm.None` variant.
-
----
-
-## Security
-
-- **alg:none rejection** at both codec and type level -- the `Algorithm` ADT has no `None` variant
-- **ECDSA signature validation** (CVE-2022-21449) -- rejects zero-value R/S, validates R and S against curve order
-- **EC point-on-curve validation** -- independent of JCA provider, prevents invalid-curve attacks
-- **RSA minimum key size** -- rejects keys with modulus below 2048 bits
-- **HMAC minimum key size** (RFC 7518 ss3.2) -- rejects secret keys shorter than the hash output (256/384/512 bits for HS256/HS384/HS512)
-- **Constant-time HMAC comparison** -- single-pass XOR accumulation, no short-circuit
-- **EdDSA signature length validation** -- rejects signatures with incorrect byte length before JCA verify (Ed25519: 64 bytes, Ed448: 114 bytes)
-- **`crit` header processing** (RFC 7515 ss4.1.11) -- rejects tokens with unrecognised or empty critical header parameters
+Key resolution filters by `use`, `key_ops`, `alg`, and `kid` before converting to JCA keys.
 
 ---
 
 ## Error Handling
 
-All operations return `IO[JwtError, A]`. `JwtError` is a structured enum:
+All operations return `IO[JwtError, A]`. `JwtError` is a sealed enum extending `Throwable` with `NoStackTrace`:
 
-```scala
-enum JwtError extends Throwable with NoStackTrace:
-  case Expired(exp: NumericDate, now: Instant)
-  case NotYetValid(nbf: NumericDate, now: Instant)
-  case InvalidAudience(expected: String, actual: Option[Audience])
-  case InvalidIssuer(expected: String, actual: Option[String])
-  case InvalidSignature
-  case MalformedToken(message: String)
-  case DecodeError(message: String)
-  case EncodeError(message: String)
-  case InvalidKey(message: String)
-  case InvalidTyp(expected: String, actual: Option[String])
-  case UnsupportedAlgorithm(alg: String)
-  case KeyNotFound(kid: Option[Kid])
-  case AmbiguousKey(kid: Option[Kid], count: Int)
-  case FetchError(message: String)
-  case MissingToken
-  case CriticalHeaderUnsupported(parameters: Chunk[String])
-```
+| Variant | Meaning |
+|---|---|
+| `Expired(exp, now)` | Token `exp` claim is in the past |
+| `NotYetValid(nbf, now)` | Token `nbf` claim is in the future |
+| `InvalidAudience(expected, actual)` | `aud` claim does not match |
+| `InvalidIssuer(expected, actual)` | `iss` claim does not match |
+| `InvalidSignature` | Cryptographic signature verification failed |
+| `MalformedToken(message)` | Token structure is not valid compact JWS |
+| `DecodeError(message)` | JSON decoding failure |
+| `EncodeError(message)` | JSON encoding failure |
+| `InvalidKey(message)` | Key type mismatch or JCA conversion error |
+| `InvalidTyp(expected, actual)` | JOSE header `typ` does not match |
+| `UnsupportedAlgorithm(alg)` | Algorithm not in the allowlist |
+| `KeyNotFound(kid)` | No matching key in the key source |
+| `AmbiguousKey(kid, count)` | Multiple keys match — cannot select one |
+| `FetchError(message)` | Remote resource fetch failure (e.g. JWKS endpoint) |
+| `MissingToken` | No authentication token present |
+| `CriticalHeaderUnsupported(parameters)` | Unrecognised `crit` header parameters |
 
-Pattern match directly on the error channel:
+Pattern match on the error channel:
 
 ```scala
 result.catchAll {
@@ -277,6 +297,22 @@ result.catchAll {
   case other                     => ZIO.succeed(Response.text(other.getMessage).status(Status.Unauthorized))
 }
 ```
+
+---
+
+## Security
+
+| Measure | Detail |
+|---|---|
+| `alg:none` rejection | No `Algorithm.None` variant; rejected at both codec and type level |
+| ECDSA signature validation | Rejects zero-value R/S, validates R and S against curve order (CVE-2022-21449) |
+| EC point-on-curve validation | Independent of JCA provider — prevents invalid-curve attacks |
+| RSA minimum key size | Rejects modulus below 2048 bits |
+| HMAC minimum key size | Rejects keys shorter than hash output per RFC 7518 §3.2 |
+| Constant-time HMAC comparison | Single-pass XOR accumulation, no short-circuit |
+| EdDSA signature length | Pre-verify: Ed25519 = 64 bytes, Ed448 = 114 bytes |
+| `crit` header processing | Rejects unrecognised or empty critical header parameters (RFC 7515 §4.1.11) |
+| OIDC HTTPS enforcement | `OidcDiscovery` rejects non-HTTPS issuer and JWKS URIs |
 
 ---
 
@@ -290,42 +326,9 @@ trait JwtCodec[A]:
   def encode(value: A): Either[Throwable, Array[Byte]]
 ```
 
-`zio-jwt-jsoniter` provides instances for all library types. Instances are injected into `JwtValidator.live` and `JwtIssuer.live` via `using` parameters - bring them into scope with `import zio.jwt.jsoniter.given`.
+`zio-jwt-jsoniter` provides instances for all library types. A conditional given bridges any `JsonValueCodec[A]` to `JwtCodec[A]` automatically — bring your custom jsoniter codecs into scope and they work with `JwtValidator` and `JwtIssuer` out of the box.
 
 To use a different JSON library, implement `JwtCodec` for `JoseHeader`, `RegisteredClaims`, and your custom claims type.
-
----
-
-## Strict Equality
-
-All library types derive `CanEqual`, so they work seamlessly with `-language:strictEquality`. Package-level `CanEqual` instances are provided for `Chunk[A]` and `NonEmptyChunk[A]` (ZIO does not ship these).
-
----
-
-## Roadmap
-
-The following are under consideration for future releases:
-
-- **Cross-platform JwtDecoder** -- decode tokens without signature verification in `zio-jwt-core` (JVM/JS/Native) -- **IMPLEMENTED**
-- **JWK Thumbprint** (RFC 7638) -- key identification by content hash
-- **X.509 Thumbprint computation** -- compute x5t/x5tS256 from certificates
-- **OIDC Discovery** -- auto-discover JWKS URLs from `/.well-known/openid-configuration`
-- **JWE (encrypted JWT)** -- `JweDecryptor` / `JweEncryptor` services with `AES-GCM` and `RSA-OAEP` key management
-- **Nested JWT** -- sign-then-encrypt and encrypt-then-sign composition via `cty: "JWT"`
-- **Custom JOSE header fields** -- type-safe extensible header model beyond `alg`, `typ`, `cty`, `kid`
-- **kid-absent token handling** -- relaxed key resolution accepting a single-key `KeySource` without requiring `kid` in the token header
-
----
-
-## Standards Compliance
-
-| Standard | Status |
-|---|---|
-| RFC 7519 (JWT) | Complete |
-| RFC 7515 (JWS) | Complete (incl. `crit` header processing) |
-| RFC 7517 (JWK) | Complete (EC, RSA, oct, OKP) |
-| RFC 7518 (JWA) | Complete (HMAC, RSA, ECDSA, RSA-PSS, EdDSA) |
-| RFC 8037 (EdDSA/OKP) | Complete |
 
 ---
 
