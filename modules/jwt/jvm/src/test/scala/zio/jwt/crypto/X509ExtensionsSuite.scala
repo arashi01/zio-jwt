@@ -38,18 +38,18 @@ class X509ExtensionsSuite extends munit.FunSuite:
     finally is.close() // scalafix:ok
 
   test("x5t returns non-empty Base64UrlString") {
-    val thumbprint = cert.x5t
+    val thumbprint = cert.x5t.toOption.get
     val str = Base64UrlString.unwrap(thumbprint)
     assert(str.nonEmpty, "x5t thumbprint should not be empty")
-    // SHA-1 produces 20 bytes → 27 base64url chars (no padding)
+    // SHA-1 produces 20 bytes -> 27 base64url chars (no padding)
     assertEquals(str.length, 27)
   }
 
   test("x5tS256 returns non-empty Base64UrlString") {
-    val thumbprint = cert.x5tS256
+    val thumbprint = cert.x5tS256.toOption.get
     val str = Base64UrlString.unwrap(thumbprint)
     assert(str.nonEmpty, "x5tS256 thumbprint should not be empty")
-    // SHA-256 produces 32 bytes → 43 base64url chars (no padding)
+    // SHA-256 produces 32 bytes -> 43 base64url chars (no padding)
     assertEquals(str.length, 43)
   }
 
@@ -66,12 +66,12 @@ class X509ExtensionsSuite extends munit.FunSuite:
   }
 
   test("x5t contains only base64url characters") {
-    val str = Base64UrlString.unwrap(cert.x5t)
+    val str = Base64UrlString.unwrap(cert.x5t.toOption.get)
     assert(str.forall(c => c.isLetterOrDigit || c == '-' || c == '_'), s"x5t contains non-base64url characters: $str")
   }
 
   test("x5tS256 contains only base64url characters") {
-    val str = Base64UrlString.unwrap(cert.x5tS256)
+    val str = Base64UrlString.unwrap(cert.x5tS256.toOption.get)
     assert(str.forall(c => c.isLetterOrDigit || c == '-' || c == '_'), s"x5tS256 contains non-base64url characters: $str")
   }
 

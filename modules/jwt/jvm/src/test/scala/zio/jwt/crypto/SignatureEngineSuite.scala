@@ -24,6 +24,7 @@ import java.security.KeyPairGenerator
 import java.security.spec.ECGenParameterSpec
 import javax.crypto.KeyGenerator
 import javax.crypto.SecretKey
+import javax.crypto.spec.SecretKeySpec
 
 import zio.jwt.*
 
@@ -82,6 +83,48 @@ class SignatureEngineSuite extends munit.FunSuite:
 
   test("HMAC HS512 sign and verify round-trip") {
     assertHmacRoundTrip(hmac512Key, Algorithm.HS512)
+  }
+
+  test("HMAC HS256 rejects short key (RFC 7518 ss3.2)") {
+    val shortKey = SecretKeySpec(new Array[Byte](16), "HmacSHA256")
+    val result = SignatureEngine.sign(testData, shortKey, Algorithm.HS256)
+    assert(result.isLeft)
+    result.left.toOption.get match
+      case JwtError.InvalidKey(msg) => assert(msg.contains("256 bits"), s"Unexpected message: $msg")
+      case other                    => fail(s"Expected InvalidKey, got $other")
+  }
+
+  test("HMAC HS384 rejects short key (RFC 7518 ss3.2)") {
+    val shortKey = SecretKeySpec(new Array[Byte](32), "HmacSHA384")
+    val result = SignatureEngine.sign(testData, shortKey, Algorithm.HS384)
+    assert(result.isLeft)
+    result.left.toOption.get match
+      case JwtError.InvalidKey(msg) => assert(msg.contains("384 bits"), s"Unexpected message: $msg")
+      case other                    => fail(s"Expected InvalidKey, got $other")
+  }
+
+  test("HMAC HS512 rejects short key (RFC 7518 ss3.2)") {
+    val shortKey = SecretKeySpec(new Array[Byte](48), "HmacSHA512")
+    val result = SignatureEngine.sign(testData, shortKey, Algorithm.HS512)
+    assert(result.isLeft)
+    result.left.toOption.get match
+      case JwtError.InvalidKey(msg) => assert(msg.contains("512 bits"), s"Unexpected message: $msg")
+      case other                    => fail(s"Expected InvalidKey, got $other")
+  }
+
+  test("HMAC verify also rejects short key (RFC 7518 ss3.2)") {
+    val shortKey = SecretKeySpec(new Array[Byte](16), "HmacSHA256")
+    val result = SignatureEngine.verify(testData, new Array[Byte](32), shortKey, Algorithm.HS256)
+    assert(result.isLeft)
+    result.left.toOption.get match
+      case JwtError.InvalidKey(_) => () // expected
+      case other                  => fail(s"Expected InvalidKey, got $other")
+  }
+
+  test("HMAC accepts exact minimum key size") {
+    val exactKey = SecretKeySpec(new Array[Byte](32), "HmacSHA256")
+    val result = SignatureEngine.sign(testData, exactKey, Algorithm.HS256)
+    assert(result.isRight, s"Expected Right but got $result")
   }
 
   test("HMAC rejects tampered signature") {

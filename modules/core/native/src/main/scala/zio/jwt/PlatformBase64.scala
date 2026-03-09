@@ -44,6 +44,7 @@ private[jwt] object PlatformBase64:
     scala.util
       .Try {
         val len = input.length
+        if len % 4 == 1 then throw IllegalArgumentException("Invalid base64url: length % 4 == 1") // scalafix:ok DisableSyntax.throw; inside Try, RFC 7515 Appendix C
         val padding = (4 - len % 4) % 4
         val outLen = (len + padding) / 4 * 3 - padding
         val out = new Array[Byte](outLen)

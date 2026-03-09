@@ -214,14 +214,17 @@ given JsonValueCodec[JwkSet]:
   override def decodeValue(in: JsonReader, default: JwkSet): JwkSet =
     if !in.isNextToken('{') then in.decodeError("expected '{'")
     var keys: Chunk[Jwk] = Chunk.empty
+    var keysSeen = false
     if !in.isNextToken('}') then
       in.rollbackToken()
       while
         val key = in.readKeyAsString()
-        if key == "keys" then keys = readJwkArray(in)
+        if key == "keys" then
+          keysSeen = true; keys = readJwkArray(in)
         else in.skip()
         in.isNextToken(',')
       do ()
+    if !keysSeen then in.decodeError("missing required member: keys (RFC 7517 ss5)")
     JwkSet(keys)
   end decodeValue
 

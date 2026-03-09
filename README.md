@@ -237,9 +237,10 @@ JWK variants: `EcPublicKey`, `EcPrivateKey`, `RsaPublicKey`, `RsaPrivateKey`, `S
 - **ECDSA signature validation** (CVE-2022-21449) -- rejects zero-value R/S, validates R and S against curve order
 - **EC point-on-curve validation** -- independent of JCA provider, prevents invalid-curve attacks
 - **RSA minimum key size** -- rejects keys with modulus below 2048 bits
+- **HMAC minimum key size** (RFC 7518 ss3.2) -- rejects secret keys shorter than the hash output (256/384/512 bits for HS256/HS384/HS512)
 - **Constant-time HMAC comparison** -- single-pass XOR accumulation, no short-circuit
 - **EdDSA signature length validation** -- rejects signatures with incorrect byte length before JCA verify (Ed25519: 64 bytes, Ed448: 114 bytes)
-- **`crit` header processing** (RFC 7515 ss4.1.11) -- rejects tokens with unrecognised critical header parameters
+- **`crit` header processing** (RFC 7515 ss4.1.11) -- rejects tokens with unrecognised or empty critical header parameters
 
 ---
 

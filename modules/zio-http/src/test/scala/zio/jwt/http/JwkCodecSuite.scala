@@ -193,10 +193,18 @@ class JwkCodecSuite extends FunSuite:
     assertEquals(decoded.keys.size, 0)
   }
 
-  test("JwkSet decodes object without keys field") {
+  test("JwkSet rejects object without keys field (RFC 7517 ss5)") {
     val bytes = """{"other":"value"}""".getBytes
-    val decoded = readFromArray[JwkSet](bytes)
-    assertEquals(decoded.keys.size, 0)
+    intercept[com.github.plokhotnyuk.jsoniter_scala.core.JsonReaderException] {
+      readFromArray[JwkSet](bytes)
+    }
+  }
+
+  test("JwkSet rejects empty object (RFC 7517 ss5)") {
+    val bytes = """{}""".getBytes
+    intercept[com.github.plokhotnyuk.jsoniter_scala.core.JsonReaderException] {
+      readFromArray[JwkSet](bytes)
+    }
   }
 
   // -- Jwk JSON structure verification --

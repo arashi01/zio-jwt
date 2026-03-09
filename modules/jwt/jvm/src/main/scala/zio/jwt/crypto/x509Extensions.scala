@@ -25,6 +25,7 @@ import java.security.cert.X509Certificate
 import boilerplate.nullable.*
 
 import zio.jwt.Base64UrlString
+import zio.jwt.JwtError
 import zio.jwt.PlatformBase64
 
 // X.509 certificate thumbprint extensions (RFC 7515 §4.1.7-8).
@@ -32,12 +33,15 @@ import zio.jwt.PlatformBase64
 
 extension (cert: X509Certificate)
 
-  /** SHA-1 thumbprint for the JOSE `x5t` header parameter (RFC 7515 §4.1.7). */
-  def x5t: Base64UrlString =
-    val hash = PlatformDigest.digest("SHA-1", cert.getEncoded.unsafe).fold(throw _, identity) // scalafix:ok
-    Base64UrlString.wrap(PlatformBase64.urlEncode(hash))
+  /** SHA-1 thumbprint for the JOSE `x5t` header parameter (RFC 7515 ss4.1.7). */
+  def x5t: Either[JwtError, Base64UrlString] =
+    PlatformDigest
+      .digest("SHA-1", cert.getEncoded.unsafe)
+      .map(hash => Base64UrlString.wrap(PlatformBase64.urlEncode(hash)))
 
-  /** SHA-256 thumbprint for the JOSE `x5t#S256` header parameter (RFC 7515 §4.1.8). */
-  def x5tS256: Base64UrlString =
-    val hash = PlatformDigest.digest("SHA-256", cert.getEncoded.unsafe).fold(throw _, identity) // scalafix:ok
-    Base64UrlString.wrap(PlatformBase64.urlEncode(hash))
+  /** SHA-256 thumbprint for the JOSE `x5t#S256` header parameter (RFC 7515 ss4.1.8). */
+  def x5tS256: Either[JwtError, Base64UrlString] =
+    PlatformDigest
+      .digest("SHA-256", cert.getEncoded.unsafe)
+      .map(hash => Base64UrlString.wrap(PlatformBase64.urlEncode(hash)))
+end extension

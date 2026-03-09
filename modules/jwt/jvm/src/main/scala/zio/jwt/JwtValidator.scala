@@ -94,18 +94,21 @@ object JwtValidator:
 
   // scalafix:off DisableSyntax.asInstanceOf; bypasses opaque type allowing deferred inline methods on JwtCodec
   private inline def parseSegments(token: TokenString): Either[JwtError, TokenSegments] =
-    Try {
-      val raw = token.asInstanceOf[String]
-      val dot1 = raw.indexOf('.')
-      val dot2 = raw.indexOf('.', dot1 + 1)
-      val decoder = java.util.Base64.getUrlDecoder
-      TokenSegments(
-        headerBytes = decoder.decode(raw.substring(0, dot1)).unsafe,
-        payloadBytes = decoder.decode(raw.substring(dot1 + 1, dot2)).unsafe,
-        signatureBytes = decoder.decode(raw.substring(dot2 + 1)).unsafe,
-        signingInput = raw.substring(0, dot2).getBytes(StandardCharsets.US_ASCII).unsafe
-      )
-    }.toEither.left.map(e => JwtError.MalformedToken(e.getMessage.getOrElse("malformed token")))
+    val raw = token.asInstanceOf[String]
+    val dot1 = raw.indexOf('.')
+    val dot2 = if dot1 >= 0 then raw.indexOf('.', dot1 + 1) else -1
+    if dot1 < 0 || dot2 < 0 then Left(JwtError.MalformedToken("Token must contain exactly three segments"))
+    else
+      Try {
+        val decoder = java.util.Base64.getUrlDecoder
+        TokenSegments(
+          headerBytes = decoder.decode(raw.substring(0, dot1)).unsafe,
+          payloadBytes = decoder.decode(raw.substring(dot1 + 1, dot2)).unsafe,
+          signatureBytes = decoder.decode(raw.substring(dot2 + 1)).unsafe,
+          signingInput = raw.substring(0, dot2).getBytes(StandardCharsets.US_ASCII).unsafe
+        )
+      }.toEither.left.map(e => JwtError.MalformedToken(e.getMessage.getOrElse("malformed token")))
+  end parseSegments
 
   // -- Temporal validation --
 
@@ -217,7 +220,9 @@ object JwtValidator:
       */
     private inline def checkCritHeader(header: JoseHeader): Either[JwtError, Unit] =
       header.crit match
-        case None         => Right(())
+        case None                           => Right(())
+        case Some(params) if params.isEmpty =>
+          Left(JwtError.MalformedToken("crit must not be empty (RFC 7515 ss4.1.11)"))
         case Some(params) =>
           val unsupported = params.filter(p => !understoodHeaders.contains(p))
           if unsupported.isEmpty then Right(())

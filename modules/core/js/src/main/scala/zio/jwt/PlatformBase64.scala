@@ -31,9 +31,10 @@ private[jwt] object PlatformBase64:
     scala.util
       .Try {
         val padded = input.length % 4 match
+          case 0 => input
           case 2 => input + "=="
           case 3 => input + "="
-          case _ => input
+          case _ => throw IllegalArgumentException("Invalid base64url: length % 4 == 1") // inside Try; RFC 7515 Appendix C
         val standard = padded.replace('-', '+').replace('_', '/')
         val binary = js.Dynamic.global.atob(standard).asInstanceOf[String]
         val bytes = new Array[Byte](binary.length)
@@ -45,7 +46,7 @@ private[jwt] object PlatformBase64:
       }
       .toEither
       .left
-      .map(e => JwtError.MalformedToken(e.getMessage.getOrElse("base64 decode failed"))) // scalafix:ok
+      .map(e => JwtError.MalformedToken(e.getMessage.getOrElse("base64 decode failed")))
 
   inline def urlEncode(data: Array[Byte]): String =
     val sb = new StringBuilder(data.length)

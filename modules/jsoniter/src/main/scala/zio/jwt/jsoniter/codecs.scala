@@ -141,7 +141,7 @@ given JsonValueCodec[JoseHeader]:
             case Left(e)  => in.decodeError(e.getMessage)
         else if key == "crit" then
           if !in.isNextToken('[') then in.decodeError("expected '[' for crit")
-          if in.isNextToken(']') then crit = Some(Chunk.empty)
+          if in.isNextToken(']') then in.decodeError("crit must not be empty (RFC 7515 ss4.1.11)")
           else
             in.rollbackToken()
             val b = Chunk.newBuilder[String]
