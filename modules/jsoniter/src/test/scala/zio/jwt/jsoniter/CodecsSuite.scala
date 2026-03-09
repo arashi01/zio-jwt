@@ -48,7 +48,7 @@ end NumericDateCodecSuite
 
 class AlgorithmCodecSuite extends munit.FunSuite:
 
-  test("round-trips all 12 algorithms") {
+  test("round-trips all 13 algorithms") {
     Algorithm.values.foreach { alg =>
       val bytes = writeToArray(alg)
       val decoded = readFromArray[Algorithm](bytes)
@@ -131,25 +131,25 @@ end AudienceCodecSuite
 class JoseHeaderCodecSuite extends munit.FunSuite:
 
   test("round-trips minimal header") {
-    val header = JoseHeader(Algorithm.RS256, None, None, None)
+    val header = JoseHeader(Algorithm.RS256, None, None, None, None, None, None)
     val bytes = writeToArray(header)
     assertEquals(readFromArray[JoseHeader](bytes), header)
   }
 
   test("round-trips full header") {
-    val header = JoseHeader(Algorithm.ES256, Some("JWT"), Some("jwt"), Some(Kid.fromUnsafe("k1")))
+    val header = JoseHeader(Algorithm.ES256, Some("JWT"), Some("jwt"), Some(Kid.fromUnsafe("k1")), None, None, None)
     val bytes = writeToArray(header)
     assertEquals(readFromArray[JoseHeader](bytes), header)
   }
 
   test("encodes alg as string") {
-    val bytes = writeToArray(JoseHeader(Algorithm.HS256, None, None, None))
+    val bytes = writeToArray(JoseHeader(Algorithm.HS256, None, None, None, None, None, None))
     val json = new String(bytes, "UTF-8")
     assert(json.contains("\"alg\":\"HS256\""))
   }
 
   test("omits None fields") {
-    val bytes = writeToArray(JoseHeader(Algorithm.HS256, None, None, None))
+    val bytes = writeToArray(JoseHeader(Algorithm.HS256, None, None, None, None, None, None))
     val json = new String(bytes, "UTF-8")
     assert(!json.contains("typ"))
     assert(!json.contains("cty"))
@@ -178,10 +178,27 @@ class JoseHeaderCodecSuite extends munit.FunSuite:
   }
 
   test("ignores unknown fields") {
-    val bytes = """{"alg":"HS256","x5t":"abc","custom":42}""".getBytes("UTF-8")
+    val bytes = """{"alg":"HS256","jku":"https://example.com","custom":42}""".getBytes("UTF-8")
     val h = readFromArray[JoseHeader](bytes)
     assertEquals(h.alg, Algorithm.HS256)
     assertEquals(h.typ, None)
+  }
+
+  test("round-trips x5t and x5t#S256 fields") {
+    val x5t = Base64UrlString.from("dGVzdA").toOption.get
+    val x5tS256 = Base64UrlString.from("c2hhMjU2").toOption.get
+    val header = JoseHeader(Algorithm.RS256, None, None, None, Some(x5t), Some(x5tS256), None)
+    val bytes = writeToArray(header)
+    val decoded = readFromArray[JoseHeader](bytes)
+    assertEquals(decoded.x5t, Some(x5t))
+    assertEquals(decoded.x5tS256, Some(x5tS256))
+  }
+
+  test("omits None x5t fields") {
+    val bytes = writeToArray(JoseHeader(Algorithm.HS256, None, None, None, None, None, None))
+    val json = new String(bytes, "UTF-8")
+    assert(!json.contains("x5t"))
+    assert(!json.contains("x5t#S256"))
   }
 end JoseHeaderCodecSuite
 
@@ -273,6 +290,7 @@ class JwtCodecBridgeSuite extends munit.FunSuite:
     val codec = summon[JwtCodec[RegisteredClaims]]
     val claims = RegisteredClaims(Some("iss"), None, None, Some(NumericDate.fromEpochSecond(100L)), None, None, None)
     val bytes = codec.encode(claims)
-    assertEquals(codec.decode(bytes), Right(claims))
+    assert(bytes.isRight)
+    assertEquals(codec.decode(bytes.toOption.get), Right(claims))
   }
 end JwtCodecBridgeSuite

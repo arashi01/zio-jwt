@@ -23,6 +23,8 @@ package zio.jwt.http
 import java.security.KeyPairGenerator
 import java.security.interfaces.ECPrivateKey as JcaEcPrivateKey
 import java.security.interfaces.ECPublicKey as JcaEcPublicKey
+import java.security.interfaces.EdECPrivateKey as JcaEdEcPrivateKey
+import java.security.interfaces.EdECPublicKey as JcaEdEcPublicKey
 import java.security.spec.ECGenParameterSpec
 import javax.crypto.KeyGenerator
 
@@ -149,10 +151,10 @@ class JwkCodecSuite extends FunSuite:
     )
     val bytes = writeToArray(jwk)
     val decoded = readFromArray[Jwk](bytes)
-    assertEquals(decoded.keyUse, Some(KeyUse.Sig))
-    assertEquals(decoded.keyOperations, Some(Chunk(KeyOp.Sign, KeyOp.Verify)))
-    assertEquals(decoded.keyAlgorithm, Some(Algorithm.HS256))
-    assertEquals(decoded.keyId, Some(Kid.fromUnsafe("test-kid")))
+    assertEquals(decoded.use, Some(KeyUse.Sig))
+    assertEquals(decoded.keyOps, Some(Chunk(KeyOp.Sign, KeyOp.Verify)))
+    assertEquals(decoded.alg, Some(Algorithm.HS256))
+    assertEquals(decoded.kid, Some(Kid.fromUnsafe("test-kid")))
   }
 
   // -- Jwk decoding errors --
@@ -166,7 +168,7 @@ class JwkCodecSuite extends FunSuite:
 
   test("Jwk rejects unsupported kty") {
     val ex = intercept[JsonReaderException] {
-      readFromArray[Jwk]("""{"kty":"OKP","x":"dGVzdA"}""".getBytes)
+      readFromArray[Jwk]("""{"kty":"UNKNOWN","x":"dGVzdA"}""".getBytes)
     }
     assert(ex.getMessage.contains("unsupported key type"))
   }
@@ -191,10 +193,18 @@ class JwkCodecSuite extends FunSuite:
     assertEquals(decoded.keys.size, 0)
   }
 
-  test("JwkSet decodes object without keys field") {
+  test("JwkSet rejects object without keys field (RFC 7517 ss5)") {
     val bytes = """{"other":"value"}""".getBytes
-    val decoded = readFromArray[JwkSet](bytes)
-    assertEquals(decoded.keys.size, 0)
+    intercept[com.github.plokhotnyuk.jsoniter_scala.core.JsonReaderException] {
+      readFromArray[JwkSet](bytes)
+    }
+  }
+
+  test("JwkSet rejects empty object (RFC 7517 ss5)") {
+    val bytes = """{}""".getBytes
+    intercept[com.github.plokhotnyuk.jsoniter_scala.core.JsonReaderException] {
+      readFromArray[JwkSet](bytes)
+    }
   }
 
   // -- Jwk JSON structure verification --
@@ -225,5 +235,54 @@ class JwkCodecSuite extends FunSuite:
     assert(json.contains(""""dp":"""))
     assert(json.contains(""""dq":"""))
     assert(json.contains(""""qi":"""))
+  }
+
+  // -- Jwk OKP codec --
+
+  test("OKP public key round-trips through JSON") {
+    val kpg = KeyPairGenerator.getInstance("Ed25519")
+    val kp = kpg.generateKeyPair()
+    val jwk = Jwk.from(kp.getPublic, Some(Kid.fromUnsafe("okp-pub-1"))).toOption.get
+    val bytes = writeToArray(jwk)
+    val decoded = readFromArray[Jwk](bytes)
+    assertEquals(decoded, jwk)
+  }
+
+  test("OKP private key round-trips through JSON") {
+    val kpg = KeyPairGenerator.getInstance("Ed25519")
+    val kp = kpg.generateKeyPair()
+    val pub = kp.getPublic.asInstanceOf[JcaEdEcPublicKey] // scalafix:ok DisableSyntax.asInstanceOf; JCA KeyPair type narrowing
+    val priv = kp.getPrivate.asInstanceOf[JcaEdEcPrivateKey] // scalafix:ok DisableSyntax.asInstanceOf; JCA KeyPair type narrowing
+    val jwk = Jwk.from(priv, pub, Some(Kid.fromUnsafe("okp-priv-1"))).toOption.get
+    val bytes = writeToArray(jwk)
+    val decoded = readFromArray[Jwk](bytes)
+    assertEquals(decoded, jwk)
+  }
+
+  test("OKP public key JSON contains kty=OKP and no d field") {
+    val kpg = KeyPairGenerator.getInstance("Ed25519")
+    val kp = kpg.generateKeyPair()
+    val jwk = Jwk.from(kp.getPublic, None).toOption.get
+    val json = new String(writeToArray(jwk))
+    assert(json.contains(""""kty":"OKP""""))
+    assert(json.contains(""""crv":"Ed25519""""))
+    assert(json.contains(""""x":"""))
+    assert(!json.contains(""""d":"""))
+  }
+
+  // -- OkpCurve codec --
+
+  test("OkpCurve round-trips through JSON") {
+    for crv <- List(OkpCurve.Ed25519, OkpCurve.Ed448) do
+      val bytes = writeToArray(crv)
+      val decoded = readFromArray[OkpCurve](bytes)
+      assertEquals(decoded, crv)
+  }
+
+  test("OkpCurve rejects unknown curve") {
+    val ex = intercept[JsonReaderException] {
+      readFromArray[OkpCurve]("""  "X25519"  """.trim.getBytes)
+    }
+    assert(ex.getMessage.contains("unsupported OKP curve"))
   }
 end JwkCodecSuite

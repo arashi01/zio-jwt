@@ -1,6 +1,6 @@
 inThisBuild(
   List(
-    scalaVersion := "3.8.1",
+    scalaVersion := "3.8.2",
     organization := "io.github.arashi01",
     startYear := Some(2026),
     homepage := Some(url("https://github.com/arashi01/zio-jwt")),
@@ -20,10 +20,10 @@ inThisBuild(
 )
 
 val libraries = new {
-  val boilerplate = Def.setting("io.github.arashi01" %%% "boilerplate" % "0.4.0")
-  val `jsoniter-scala-core` = Def.setting("com.github.plokhotnyuk.jsoniter-scala" %%% "jsoniter-scala-core" % "2.38.8")
+  val boilerplate = Def.setting("io.github.arashi01" %%% "boilerplate" % "0.4.1")
+  val `jsoniter-scala-core` = Def.setting("com.github.plokhotnyuk.jsoniter-scala" %%% "jsoniter-scala-core" % "2.38.9")
   val `jsoniter-scala-macros` = `jsoniter-scala-core`(_.withName("jsoniter-scala-macros"))
-  val munit = Def.setting("org.scalameta" %%% "munit" % "1.2.1")
+  val munit = Def.setting("org.scalameta" %%% "munit" % "1.2.4")
   val `munit-scalacheck` = Def.setting("org.scalameta" %%% "munit-scalacheck" % "1.2.0")
   val `munit-zio` = Def.setting("com.github.poslegm" %%% "munit-zio" % "0.4.0")
   val `scala-java-time` = Def.setting("io.github.cquiroz" %%% "scala-java-time" % "2.6.0")
@@ -34,7 +34,7 @@ val libraries = new {
 val `zio-jwt-core` =
   crossProject(JVMPlatform, JSPlatform, NativePlatform)
     .withoutSuffixFor(JVMPlatform)
-    .crossType(CrossType.Pure)
+    .crossType(CrossType.Full)
     .in(file("modules/core"))
     .settings(compilerSettings)
     .settings(unitTestSettings)
@@ -44,10 +44,6 @@ val `zio-jwt-core` =
     .nativeSettings(nativeSettings)
     .settings(libraryDependencies += libraries.boilerplate.value)
     .settings(libraryDependencies += libraries.zio.value)
-    .jvmSettings(
-      Compile / unmanagedSourceDirectories += baseDirectory.value.getParentFile / "jvm" / "src" / "main" / "scala",
-      Test / unmanagedSourceDirectories += baseDirectory.value.getParentFile / "jvm" / "src" / "test" / "scala"
-    )
     .jsSettings(libraryDependencies += libraries.`scala-java-time`.value % Provided)
     .nativeSettings(libraryDependencies += libraries.`scala-java-time`.value % Provided)
 

@@ -24,6 +24,7 @@ import java.security.KeyPairGenerator
 import java.security.spec.ECGenParameterSpec
 import javax.crypto.KeyGenerator
 import javax.crypto.SecretKey
+import javax.crypto.spec.SecretKeySpec
 
 import zio.jwt.*
 
@@ -84,6 +85,48 @@ class SignatureEngineSuite extends munit.FunSuite:
     assertHmacRoundTrip(hmac512Key, Algorithm.HS512)
   }
 
+  test("HMAC HS256 rejects short key (RFC 7518 ss3.2)") {
+    val shortKey = SecretKeySpec(new Array[Byte](16), "HmacSHA256")
+    val result = SignatureEngine.sign(testData, shortKey, Algorithm.HS256)
+    assert(result.isLeft)
+    result.left.toOption.get match
+      case JwtError.InvalidKey(msg) => assert(msg.contains("256 bits"), s"Unexpected message: $msg")
+      case other                    => fail(s"Expected InvalidKey, got $other")
+  }
+
+  test("HMAC HS384 rejects short key (RFC 7518 ss3.2)") {
+    val shortKey = SecretKeySpec(new Array[Byte](32), "HmacSHA384")
+    val result = SignatureEngine.sign(testData, shortKey, Algorithm.HS384)
+    assert(result.isLeft)
+    result.left.toOption.get match
+      case JwtError.InvalidKey(msg) => assert(msg.contains("384 bits"), s"Unexpected message: $msg")
+      case other                    => fail(s"Expected InvalidKey, got $other")
+  }
+
+  test("HMAC HS512 rejects short key (RFC 7518 ss3.2)") {
+    val shortKey = SecretKeySpec(new Array[Byte](48), "HmacSHA512")
+    val result = SignatureEngine.sign(testData, shortKey, Algorithm.HS512)
+    assert(result.isLeft)
+    result.left.toOption.get match
+      case JwtError.InvalidKey(msg) => assert(msg.contains("512 bits"), s"Unexpected message: $msg")
+      case other                    => fail(s"Expected InvalidKey, got $other")
+  }
+
+  test("HMAC verify also rejects short key (RFC 7518 ss3.2)") {
+    val shortKey = SecretKeySpec(new Array[Byte](16), "HmacSHA256")
+    val result = SignatureEngine.verify(testData, new Array[Byte](32), shortKey, Algorithm.HS256)
+    assert(result.isLeft)
+    result.left.toOption.get match
+      case JwtError.InvalidKey(_) => () // expected
+      case other                  => fail(s"Expected InvalidKey, got $other")
+  }
+
+  test("HMAC accepts exact minimum key size") {
+    val exactKey = SecretKeySpec(new Array[Byte](32), "HmacSHA256")
+    val result = SignatureEngine.sign(testData, exactKey, Algorithm.HS256)
+    assert(result.isRight, s"Expected Right but got $result")
+  }
+
   test("HMAC rejects tampered signature") {
     val sig = SignatureEngine.sign(testData, hmac256Key, Algorithm.HS256)
     assert(sig.isRight)
@@ -119,16 +162,16 @@ class SignatureEngineSuite extends munit.FunSuite:
     val result = SignatureEngine.sign(testData, weakRsaKeyPair.getPrivate, Algorithm.RS256)
     assert(result.isLeft)
     result.left.toOption.get match
-      case JwtError.MalformedToken(_) => () // expected
-      case other                      => fail(s"Expected MalformedToken, got $other")
+      case JwtError.InvalidKey(_) => () // expected
+      case other                  => fail(s"Expected InvalidKey, got $other")
   }
 
   test("RSA rejects weak key on verify") {
     val result = SignatureEngine.verify(testData, Array[Byte](1), weakRsaKeyPair.getPublic, Algorithm.RS256)
     assert(result.isLeft)
     result.left.toOption.get match
-      case JwtError.MalformedToken(_) => () // expected
-      case other                      => fail(s"Expected MalformedToken, got $other")
+      case JwtError.InvalidKey(_) => () // expected
+      case other                  => fail(s"Expected InvalidKey, got $other")
   }
 
   // -- ECDSA tests --
@@ -184,8 +227,46 @@ class SignatureEngineSuite extends munit.FunSuite:
     val result = SignatureEngine.sign(testData, weakRsaKeyPair.getPrivate, Algorithm.PS256)
     assert(result.isLeft)
     result.left.toOption.get match
-      case JwtError.MalformedToken(_) => ()
-      case other                      => fail(s"Expected MalformedToken, got $other")
+      case JwtError.InvalidKey(_) => ()
+      case other                  => fail(s"Expected InvalidKey, got $other")
+  }
+
+  // -- EdDSA tests --
+
+  private lazy val ed25519KeyPair =
+    val kpg = KeyPairGenerator.getInstance("Ed25519")
+    kpg.generateKeyPair()
+
+  test("EdDSA Ed25519 sign and verify round-trip") {
+    val sig = SignatureEngine.sign(testData, ed25519KeyPair.getPrivate, Algorithm.EdDSA)
+    assert(sig.isRight, s"sign failed: ${sig.left.toOption}")
+    val result = SignatureEngine.verify(testData, sig.toOption.get, ed25519KeyPair.getPublic, Algorithm.EdDSA)
+    assertEquals(result, Right(()))
+  }
+
+  test("EdDSA rejects zero-length signature") {
+    val result = SignatureEngine.verify(testData, Array.emptyByteArray, ed25519KeyPair.getPublic, Algorithm.EdDSA)
+    assertEquals(result, Left(JwtError.InvalidSignature))
+  }
+
+  test("EdDSA rejects wrong-length signature (truncated)") {
+    val sig = SignatureEngine.sign(testData, ed25519KeyPair.getPrivate, Algorithm.EdDSA)
+    assert(sig.isRight)
+    val truncated = sig.toOption.get.take(32)
+    val result = SignatureEngine.verify(testData, truncated, ed25519KeyPair.getPublic, Algorithm.EdDSA)
+    assertEquals(result, Left(JwtError.InvalidSignature))
+  }
+
+  test("EdDSA rejects all-zero 64-byte signature") {
+    val allZero = new Array[Byte](64)
+    val result = SignatureEngine.verify(testData, allZero, ed25519KeyPair.getPublic, Algorithm.EdDSA)
+    assertEquals(result, Left(JwtError.InvalidSignature))
+  }
+
+  test("EdDSA rejects oversized signature") {
+    val oversized = new Array[Byte](128)
+    val result = SignatureEngine.verify(testData, oversized, ed25519KeyPair.getPublic, Algorithm.EdDSA)
+    assertEquals(result, Left(JwtError.InvalidSignature))
   }
 
   // -- Key type mismatch tests --

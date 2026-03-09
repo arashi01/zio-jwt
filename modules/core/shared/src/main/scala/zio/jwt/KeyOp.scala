@@ -1,0 +1,51 @@
+/*
+ * Copyright (c) 2026 Ali Rashid.
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining a copy of
+ * this software and associated documentation files (the "Software"), to deal in
+ * the Software without restriction, including without limitation the rights to
+ * use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of
+ * the Software, and to permit persons to whom the Software is furnished to do so,
+ * subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in all
+ * copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS
+ * FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR
+ * COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER
+ * IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
+ * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+ */
+package zio.jwt
+
+/** JWK key operations parameter (RFC 7517 ss4.3). */
+enum KeyOp derives CanEqual:
+  case Sign, Verify, Encrypt, Decrypt, WrapKey, UnwrapKey, DeriveKey, DeriveBits
+
+/** Companion for [[KeyOp]]. Provides wire-format name conversions. */
+object KeyOp:
+
+  /** All key operation names as (wire-format string, KeyOp) pairs. */
+  val names: Array[(String, KeyOp)] = Array(
+    "sign" -> KeyOp.Sign,
+    "verify" -> KeyOp.Verify,
+    "encrypt" -> KeyOp.Encrypt,
+    "decrypt" -> KeyOp.Decrypt,
+    "wrapKey" -> KeyOp.WrapKey,
+    "unwrapKey" -> KeyOp.UnwrapKey,
+    "deriveKey" -> KeyOp.DeriveKey,
+    "deriveBits" -> KeyOp.DeriveBits
+  )
+
+  private val stringToKeyOp: Map[String, KeyOp] = names.toMap
+  private val keyOpToString: Map[KeyOp, String] = names.map((s, o) => o -> s).toMap
+
+  /** Parses a key operation from its wire-format string (e.g. "sign", "verify"). */
+  def fromString(s: String): Option[KeyOp] = stringToKeyOp.get(s)
+
+  extension (op: KeyOp)
+    /** Wire-format name for JSON serialisation (e.g. "sign", "verify"). */
+    inline def name: String = keyOpToString(op)
+end KeyOp

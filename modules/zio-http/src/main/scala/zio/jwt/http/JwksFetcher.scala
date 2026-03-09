@@ -27,6 +27,8 @@ import zio.http.Client
 import zio.http.Request
 import zio.http.URL
 
+import boilerplate.nullable.*
+
 import zio.jwt.JwkSet
 import zio.jwt.JwtCodec
 import zio.jwt.JwtError
@@ -60,20 +62,20 @@ object JwksFetcher:
     def fetch: IO[JwtError, JwkSet] =
       URL.fromURI(config.jwksUrl) match
         case None =>
-          ZIO.fail(JwtError.MalformedToken(IllegalArgumentException(s"Invalid JWKS URL: ${config.jwksUrl}")))
+          ZIO.fail(JwtError.FetchError(s"Invalid JWKS URL: ${config.jwksUrl}"))
         case Some(url) =>
           val request = Request.get(url)
           (for
-            response <- Client.batched(request).mapError(e => JwtError.MalformedToken(e))
+            response <- Client.batched(request).mapError(e => JwtError.FetchError(e.getMessage.getOrElse("fetch failed")))
             _ <- ZIO.when(!response.status.isSuccess)(
                    ZIO.fail(
-                     JwtError.MalformedToken(
-                       RuntimeException(s"JWKS fetch returned HTTP ${response.status.code}")
+                     JwtError.FetchError(
+                       s"JWKS fetch returned HTTP ${response.status.code}"
                      )
                    )
                  )
-            bytes <- response.body.asArray.mapError(e => JwtError.MalformedToken(e))
-            jwkSet <- ZIO.fromEither(jwkSetCodec.decode(bytes).left.map(JwtError.MalformedToken(_)))
+            bytes <- response.body.asArray.mapError(e => JwtError.FetchError(e.getMessage.getOrElse("body read failed")))
+            jwkSet <- ZIO.fromEither(jwkSetCodec.decode(bytes).left.map(e => JwtError.DecodeError(e.getMessage.getOrElse("decode failed"))))
           yield jwkSet).provideEnvironment(zio.ZEnvironment(client))
   end LiveFetcher
 end JwksFetcher

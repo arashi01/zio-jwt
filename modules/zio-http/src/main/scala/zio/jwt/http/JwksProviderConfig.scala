@@ -23,7 +23,11 @@ package zio.jwt.http
 import java.net.URI
 import java.time.Duration
 
-/** Configuration for [[JwksProvider]] refresh behaviour. */
+/** Configuration for [[JwksProvider]] refresh behaviour. `jwksUrl` is the HTTPS endpoint serving
+  * the JWK Set. `refreshInterval` controls the background polling period. `minRefreshInterval` is
+  * the minimum interval between forced refreshes to prevent excessive requests under high
+  * concurrency.
+  */
 final case class JwksProviderConfig(
   jwksUrl: URI,
   refreshInterval: Duration,

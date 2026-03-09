@@ -25,18 +25,19 @@ import java.security.AlgorithmParameters
 import java.security.spec.ECGenParameterSpec
 import java.security.spec.ECParameterSpec
 
+import boilerplate.nullable.*
+
 // JVM-specific extensions on EcCurve requiring JCA types.
-// Discoverable via `import zio.jwt.*` (ss13).
+// Discoverable via `import zio.jwt.*`.
 
 private lazy val p256Spec: ECParameterSpec = loadEcSpec("secp256r1")
 private lazy val p384Spec: ECParameterSpec = loadEcSpec("secp384r1")
 private lazy val p521Spec: ECParameterSpec = loadEcSpec("secp521r1")
 
 private def loadEcSpec(name: String): ECParameterSpec =
-  import scala.language.unsafeNulls
   val params = AlgorithmParameters.getInstance("EC")
   params.init(ECGenParameterSpec(name))
-  params.getParameterSpec(classOf[ECParameterSpec])
+  params.getParameterSpec(classOf[ECParameterSpec]).unsafe(s"JCA returned null EC spec for $name")
 
 // Curve orders (NIST FIPS 186-4)
 private val p256Order: BigInteger =

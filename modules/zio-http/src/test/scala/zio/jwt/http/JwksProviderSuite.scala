@@ -33,6 +33,7 @@ import zio.ZLayer
 import munit.ZSuite
 
 import zio.jwt.*
+import zio.jwt.jsoniter.given
 
 class JwksProviderSuite extends ZSuite:
 
@@ -111,7 +112,7 @@ class JwksProviderSuite extends ZSuite:
         fetcher = StubFetcher(callCount,
                               n =>
                                 if n == 0 then ZIO.succeed(JwkSet(Chunk(jwk)))
-                                else ZIO.fail(JwtError.MalformedToken(RuntimeException("network error")))
+                                else ZIO.fail(JwtError.FetchError("network error"))
                   )
         provider <- JwksProvider.live.build
                       .provideSome[Scope](
@@ -125,7 +126,7 @@ class JwksProviderSuite extends ZSuite:
       yield
         // Should still have the initial good keys
         assertEquals(keys.size, 1)
-        assertEquals(keys.head.keyId, Some(Kid.fromUnsafe("good-key")))
+        assertEquals(keys.head.kid, Some(Kid.fromUnsafe("good-key")))
     }
   }
 
@@ -150,6 +151,43 @@ class JwksProviderSuite extends ZSuite:
       yield
         // With 500ms min refresh and only 200ms elapsed, should be 1 (initial) + maybe 1 more
         assert(count <= 2, s"Expected at most 2 fetches, got $count (rate limiting should prevent more)")
+    }
+  }
+
+  testZ("rejects non-HTTPS JWKS URL") {
+    val httpConfig = JwksProviderConfig(
+      jwksUrl = java.net.URI.create("http://example.com/.well-known/jwks.json"),
+      refreshInterval = Duration.ofMillis(50),
+      minRefreshInterval = Duration.ofMillis(10)
+    )
+    ZIO.scoped {
+      for
+        callCount <- Ref.make(0)
+        fetcher = StubFetcher(callCount, _ => ZIO.succeed(JwkSet(Chunk.empty)))
+        result <- JwksProvider.live.build
+                    .provideSome[Scope](
+                      ZLayer.succeed(fetcher: JwksFetcher),
+                      ZLayer.succeed(httpConfig)
+                    )
+                    .either
+      yield assert(result.isLeft, "Expected failure for non-HTTPS URL")
+    }
+  }
+
+  testZ("fromUrl rejects non-HTTPS URLs") {
+    // fromUrl composes JwksProviderConfig, JwksFetcher.live, and JwksProvider.live internally.
+    // HTTPS validation occurs within live, so an HTTP URL fails at layer construction.
+    ZIO.scoped {
+      JwksProvider
+        .fromUrl(
+          java.net.URI.create("http://example.com/.well-known/jwks.json"),
+          Duration.ofSeconds(60),
+          Duration.ofSeconds(5)
+        )
+        .build
+        .provideSome[Scope](zio.http.Client.default)
+        .either
+        .map(r => assert(r.isLeft, "Expected failure for non-HTTPS URL via fromUrl"))
     }
   }
 end JwksProviderSuite

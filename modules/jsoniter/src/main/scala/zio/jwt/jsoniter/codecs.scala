@@ -46,12 +46,12 @@ given JsonValueCodec[NumericDate]:
 given JsonValueCodec[Algorithm]:
   override def decodeValue(in: JsonReader, default: Algorithm): Algorithm =
     val s = in.readString("")
-    algorithmFromString(s) match
+    Algorithm.fromString(s) match
       case Some(alg) => alg
       case None      => in.decodeError(s"unsupported or prohibited algorithm: $s")
 
   override def encodeValue(x: Algorithm, out: JsonWriter): Unit =
-    out.writeVal(algorithmToString(x))
+    out.writeVal(x.name)
 
   override def nullValue: Algorithm = null.asInstanceOf[Algorithm]
 
@@ -106,6 +106,9 @@ given JsonValueCodec[JoseHeader]:
     var typ: Option[String] = None
     var cty: Option[String] = None
     var kid: Option[Kid] = None
+    var x5t: Option[Base64UrlString] = None
+    var x5tS256: Option[Base64UrlString] = None
+    var crit: Option[Chunk[String]] = None
     var algSeen = false
 
     if !in.isNextToken('{') then in.decodeError("expected '{'")
@@ -119,7 +122,7 @@ given JsonValueCodec[JoseHeader]:
           val algStr = in.readString("")
           if algStr.isEmpty || algStr == "none" then in.decodeError("algorithm 'none' is not permitted")
           else
-            algorithmFromString(algStr) match
+            Algorithm.fromString(algStr) match
               case Some(a) => alg = a
               case None    => in.decodeError(s"unsupported algorithm: $algStr")
         else if key == "typ" then typ = readOptionalString(in)
@@ -128,6 +131,26 @@ given JsonValueCodec[JoseHeader]:
           Kid.from(in.readString("")) match
             case Right(k) => kid = Some(k)
             case Left(e)  => in.decodeError(e.getMessage)
+        else if key == "x5t" then
+          Base64UrlString.from(in.readString("")) match
+            case Right(b) => x5t = Some(b)
+            case Left(e)  => in.decodeError(e.getMessage)
+        else if key == "x5t#S256" then
+          Base64UrlString.from(in.readString("")) match
+            case Right(b) => x5tS256 = Some(b)
+            case Left(e)  => in.decodeError(e.getMessage)
+        else if key == "crit" then
+          if !in.isNextToken('[') then in.decodeError("expected '[' for crit")
+          if in.isNextToken(']') then in.decodeError("crit must not be empty (RFC 7515 ss4.1.11)")
+          else
+            in.rollbackToken()
+            val b = Chunk.newBuilder[String]
+            while
+              b += in.readString("")
+              in.isNextToken(',')
+            do ()
+            if !in.isCurrentToken(']') then in.arrayEndError()
+            crit = Some(b.result())
         else in.skip()
         end if
         in.isNextToken(',')
@@ -136,13 +159,13 @@ given JsonValueCodec[JoseHeader]:
     end if
 
     if !algSeen then in.decodeError("missing required field: alg")
-    JoseHeader(alg.asInstanceOf[Algorithm], typ, cty, kid)
+    JoseHeader(alg.asInstanceOf[Algorithm], typ, cty, kid, x5t, x5tS256, crit)
   end decodeValue
 
   override def encodeValue(x: JoseHeader, out: JsonWriter): Unit =
     out.writeObjectStart()
     out.writeKey("alg")
-    out.writeVal(algorithmToString(x.alg))
+    out.writeVal(x.alg.name)
     x.typ.foreach { t =>
       out.writeKey("typ")
       out.writeVal(t)
@@ -154,6 +177,20 @@ given JsonValueCodec[JoseHeader]:
     x.kid.foreach { k =>
       out.writeKey("kid")
       out.writeVal(k.unwrap)
+    }
+    x.x5t.foreach { t =>
+      out.writeKey("x5t")
+      out.writeVal(t.unwrap)
+    }
+    x.x5tS256.foreach { s =>
+      out.writeKey("x5t#S256")
+      out.writeVal(s.unwrap)
+    }
+    x.crit.foreach { params =>
+      out.writeKey("crit")
+      out.writeArrayStart()
+      params.foreach(out.writeVal)
+      out.writeArrayEnd()
     }
     out.writeObjectEnd()
   end encodeValue
@@ -256,37 +293,10 @@ private def readOptionalNumericDate(in: JsonReader): Option[NumericDate] =
     in.rollbackToken()
     Some(NumericDate.fromEpochSecond(in.readLong()))
 
-private val algorithmNames: Array[(String, Algorithm)] = Array(
-  "HS256" -> Algorithm.HS256,
-  "HS384" -> Algorithm.HS384,
-  "HS512" -> Algorithm.HS512,
-  "RS256" -> Algorithm.RS256,
-  "RS384" -> Algorithm.RS384,
-  "RS512" -> Algorithm.RS512,
-  "ES256" -> Algorithm.ES256,
-  "ES384" -> Algorithm.ES384,
-  "ES512" -> Algorithm.ES512,
-  "PS256" -> Algorithm.PS256,
-  "PS384" -> Algorithm.PS384,
-  "PS512" -> Algorithm.PS512
-)
-
-private val stringToAlgorithm: Map[String, Algorithm] =
-  algorithmNames.toMap
-
-private val algorithmToStringMap: Map[Algorithm, String] =
-  algorithmNames.map((s, a) => a -> s).toMap
-
-private def algorithmFromString(s: String): Option[Algorithm] =
-  stringToAlgorithm.get(s)
-
-private def algorithmToString(alg: Algorithm): String =
-  algorithmToStringMap(alg)
-
 /** Derive a [[JwtCodec]] from an available [[JsonValueCodec]]. */
 given [A] => (jvc: JsonValueCodec[A]) => JwtCodec[A]:
   inline def decode(bytes: Array[Byte]): Either[Throwable, A] =
     Try(readFromArray[A](bytes)).toEither
 
-  inline def encode(value: A): Array[Byte] =
-    writeToArray[A](value)
+  inline def encode(value: A): Either[Throwable, Array[Byte]] =
+    Try(writeToArray[A](value)).toEither

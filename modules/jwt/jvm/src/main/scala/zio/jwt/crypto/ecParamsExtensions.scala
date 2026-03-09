@@ -27,10 +27,10 @@ import zio.jwt.JwtError
 
 // Extension methods on EcCurve delegating to EcParams utility functions.
 // Discoverable via `import zio.jwt.crypto.*`.
-// EcParams.validatePointOnCurve(crv, point) serves as the non-curried alias (ss1.4).
+// EcParams.validatePointOnCurve(crv, point) serves as the non-curried alias.
 
 extension (crv: EcCurve)
 
-  /** Validates that the given point lies on this curve (ss7.3). */
+  /** Validates that the given point lies on this curve. */
   def validatePoint(point: ECPoint): Either[JwtError, Unit] =
     EcParams.validatePointOnCurve(crv, point)

@@ -32,14 +32,14 @@ import zio.UIO
 import zio.ZIO
 
 /** Source of [[Jwk]] keys for signature verification and signing. Implementations provide keys as
-  * an infallible effect; structural validity is checked lazily during key resolution (ss9.3).
+  * an infallible effect; structural validity is checked lazily during key resolution.
   *
   * @see [[KeySource$ KeySource]] for static factory methods and key resolution.
   */
 trait KeySource:
   def keys: UIO[Chunk[Jwk]]
 
-/** Companion for [[KeySource]]. Provides static factories and key resolution logic (ss9.3). */
+/** Companion for [[KeySource]]. Provides static factories and key resolution logic. */
 object KeySource:
 
   /** Creates a [[KeySource]] backed by a fixed set of keys. */
@@ -50,7 +50,7 @@ object KeySource:
   /** Creates a [[KeySource]] backed by a single key. */
   def static(jwk: Jwk): KeySource = static(Chunk(jwk))
 
-  // -- Verification-oriented resolution (ss9.3) --
+  // -- Verification-oriented resolution --
 
   /** Resolves a public key suitable for verification matching the given header. */
   def resolvePublicKey(source: KeySource, header: JoseHeader): IO[JwtError, PublicKey] =
@@ -72,13 +72,13 @@ object KeySource:
 
   extension (source: KeySource)
 
-    /** Resolves a public key suitable for verification (ss9.3). */
+    /** Resolves a public key suitable for verification. */
     @targetName("keySourceResolvePublicKey")
     def resolvePublicKey(header: JoseHeader): IO[JwtError, PublicKey] =
       resolveJwk(source, header, _.suitableForVerification(header.alg))
         .flatMap(jwk => ZIO.fromEither(jwk.toPublicKey))
 
-    /** Resolves a secret key suitable for verification (ss9.3). */
+    /** Resolves a secret key suitable for verification. */
     @targetName("keySourceResolveSecretKey")
     def resolveSecretKey(header: JoseHeader): IO[JwtError, SecretKey] =
       resolveJwk(source, header, _.suitableForVerification(header.alg))
@@ -105,14 +105,15 @@ object KeySource:
 
       val selected = header.kid match
         case Some(headerKid) =>
-          filtered.filter(_.keyId.contains(headerKid)) match
+          filtered.filter(_.kid.contains(headerKid)) match
             case chunk if chunk.size == 1 => Right(chunk(0))
             case chunk if chunk.isEmpty   => Left(JwtError.KeyNotFound(Some(headerKid)))
-            case _                        => Left(JwtError.KeyNotFound(Some(headerKid)))
+            case chunk                    => Left(JwtError.AmbiguousKey(Some(headerKid), chunk.size))
         case None =>
           filtered match
             case chunk if chunk.size == 1 => Right(chunk(0))
-            case _                        => Left(JwtError.KeyNotFound(None))
+            case chunk if chunk.isEmpty   => Left(JwtError.KeyNotFound(None))
+            case chunk                    => Left(JwtError.AmbiguousKey(None, chunk.size))
 
       ZIO.fromEither(selected)
     }

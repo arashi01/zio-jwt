@@ -23,6 +23,7 @@ package zio.jwt
 import java.nio.charset.StandardCharsets
 import java.security.KeyPairGenerator
 import java.security.interfaces.ECPublicKey as JcaEcPublicKey
+import java.security.interfaces.EdECPublicKey as JcaEdEcPublicKey
 import java.security.spec.ECGenParameterSpec
 import java.time.Duration
 import java.time.Instant
@@ -44,8 +45,8 @@ class JwtValidatorSuite extends ZSuite:
 
   private given JwtCodec[Unit] = new JwtCodec[Unit]:
     def decode(bytes: Array[Byte]): Either[Throwable, Unit] = Right(())
-    def encode(value: Unit): Array[Byte] =
-      "{}".getBytes(StandardCharsets.UTF_8)
+    def encode(value: Unit): Either[Throwable, Array[Byte]] =
+      Right("{}".getBytes(StandardCharsets.UTF_8))
 
   // -- Key generation --
 
@@ -64,6 +65,10 @@ class JwtValidatorSuite extends ZSuite:
     kpg.initialize(ECGenParameterSpec("secp256r1"))
     kpg.generateKeyPair()
 
+  private lazy val ed25519KeyPair =
+    val kpg = KeyPairGenerator.getInstance("Ed25519")
+    kpg.generateKeyPair()
+
   // -- Token construction helper --
 
   private def createToken(
@@ -75,13 +80,15 @@ class JwtValidatorSuite extends ZSuite:
     val encoder = java.util.Base64.getUrlEncoder.withoutPadding()
     val headerCodec = summon[JwtCodec[JoseHeader]]
     val claimsCodec = summon[JwtCodec[RegisteredClaims]]
-    val headerB64 = encoder.encodeToString(headerCodec.encode(header))
-    val payloadB64 = encoder.encodeToString(claimsCodec.encode(claims))
-    val signingInput = s"$headerB64.$payloadB64".getBytes(StandardCharsets.US_ASCII)
     for
+      headerBytes <- headerCodec.encode(header).left.map(e => JwtError.DecodeError(e.getMessage.nn))
+      headerB64 = encoder.encodeToString(headerBytes)
+      payloadBytes <- claimsCodec.encode(claims).left.map(e => JwtError.DecodeError(e.getMessage.nn))
+      payloadB64 = encoder.encodeToString(payloadBytes)
+      signingInput = s"$headerB64.$payloadB64".getBytes(StandardCharsets.US_ASCII)
       sig <- signFn(signingInput)
       sigB64 = encoder.encodeToString(sig)
-      token <- TokenString.from(s"$headerB64.$payloadB64.$sigB64").left.map(e => JwtError.MalformedToken(e))
+      token <- TokenString.from(s"$headerB64.$payloadB64.$sigB64").left.map(e => JwtError.MalformedToken(e.getMessage.nn))
     yield token
   end createToken
 
@@ -102,7 +109,7 @@ class JwtValidatorSuite extends ZSuite:
   testZ("validates a valid HMAC HS256 token") {
     val jwk = Jwk.from(hmac256Key, Some(Kid.fromUnsafe("k1"))).toOption.get
     val keySource = KeySource.static(jwk)
-    val header = JoseHeader(Algorithm.HS256, None, None, Some(Kid.fromUnsafe("k1")))
+    val header = JoseHeader(Algorithm.HS256, None, None, Some(Kid.fromUnsafe("k1")), None, None, None)
     val claims = RegisteredClaims(None, Some("test"), None, None, None, None, None)
     val token = createToken(header, claims, data => SignatureEngine.sign(data, hmac256Key, Algorithm.HS256))
     val config = validConfig(NonEmptyChunk(Algorithm.HS256))
@@ -120,7 +127,7 @@ class JwtValidatorSuite extends ZSuite:
   testZ("validates a valid RSA RS256 token") {
     val jwk = Jwk.from(rsaKeyPair.getPublic, Some(Kid.fromUnsafe("rsa1"))).toOption.get
     val keySource = KeySource.static(jwk)
-    val header = JoseHeader(Algorithm.RS256, None, None, Some(Kid.fromUnsafe("rsa1")))
+    val header = JoseHeader(Algorithm.RS256, None, None, Some(Kid.fromUnsafe("rsa1")), None, None, None)
     val claims = RegisteredClaims(None, Some("rsa-test"), None, None, None, None, None)
     val token = createToken(header, claims, data => SignatureEngine.sign(data, rsaKeyPair.getPrivate, Algorithm.RS256))
     val config = validConfig(NonEmptyChunk(Algorithm.RS256))
@@ -136,7 +143,7 @@ class JwtValidatorSuite extends ZSuite:
     val pub = ec256KeyPair.getPublic.asInstanceOf[JcaEcPublicKey] // scalafix:ok DisableSyntax.asInstanceOf; JCA KeyPair type narrowing
     val jwk = Jwk.from(pub, Some(Kid.fromUnsafe("ec1"))).toOption.get
     val keySource = KeySource.static(jwk)
-    val header = JoseHeader(Algorithm.ES256, None, None, Some(Kid.fromUnsafe("ec1")))
+    val header = JoseHeader(Algorithm.ES256, None, None, Some(Kid.fromUnsafe("ec1")), None, None, None)
     val claims = RegisteredClaims(None, Some("ec-test"), None, None, None, None, None)
     val token = createToken(header, claims, data => SignatureEngine.sign(data, ec256KeyPair.getPrivate, Algorithm.ES256))
     val config = validConfig(NonEmptyChunk(Algorithm.ES256))
@@ -151,7 +158,7 @@ class JwtValidatorSuite extends ZSuite:
   testZ("rejects an expired token") {
     val jwk = Jwk.from(hmac256Key, Some(Kid.fromUnsafe("k1"))).toOption.get
     val keySource = KeySource.static(jwk)
-    val header = JoseHeader(Algorithm.HS256, None, None, Some(Kid.fromUnsafe("k1")))
+    val header = JoseHeader(Algorithm.HS256, None, None, Some(Kid.fromUnsafe("k1")), None, None, None)
     val claims = RegisteredClaims(None, None, None, Some(NumericDate.fromEpochSecond(0L)), None, None, None)
     val token = createToken(header, claims, data => SignatureEngine.sign(data, hmac256Key, Algorithm.HS256))
     val config = validConfig(NonEmptyChunk(Algorithm.HS256))
@@ -172,7 +179,7 @@ class JwtValidatorSuite extends ZSuite:
   testZ("rejects a not-yet-valid token") {
     val jwk = Jwk.from(hmac256Key, Some(Kid.fromUnsafe("k1"))).toOption.get
     val keySource = KeySource.static(jwk)
-    val header = JoseHeader(Algorithm.HS256, None, None, Some(Kid.fromUnsafe("k1")))
+    val header = JoseHeader(Algorithm.HS256, None, None, Some(Kid.fromUnsafe("k1")), None, None, None)
     val claims = RegisteredClaims(None, None, None, None, Some(NumericDate.fromEpochSecond(9999999999L)), None, None)
     val token = createToken(header, claims, data => SignatureEngine.sign(data, hmac256Key, Algorithm.HS256))
     val config = validConfig(NonEmptyChunk(Algorithm.HS256))
@@ -194,7 +201,7 @@ class JwtValidatorSuite extends ZSuite:
     val jwk = Jwk.from(hmac256Key, Some(Kid.fromUnsafe("k1"))).toOption.get
     val keySource = KeySource.static(jwk)
     val expTime = Instant.now().minusSeconds(300)
-    val header = JoseHeader(Algorithm.HS256, None, None, Some(Kid.fromUnsafe("k1")))
+    val header = JoseHeader(Algorithm.HS256, None, None, Some(Kid.fromUnsafe("k1")), None, None, None)
     val claims = RegisteredClaims(None, None, None, Some(NumericDate.wrap(expTime)), None, None, None)
     val token = createToken(header, claims, data => SignatureEngine.sign(data, hmac256Key, Algorithm.HS256))
     val config = ValidationConfig(
@@ -215,7 +222,7 @@ class JwtValidatorSuite extends ZSuite:
   testZ("rejects token with wrong issuer") {
     val jwk = Jwk.from(hmac256Key, Some(Kid.fromUnsafe("k1"))).toOption.get
     val keySource = KeySource.static(jwk)
-    val header = JoseHeader(Algorithm.HS256, None, None, Some(Kid.fromUnsafe("k1")))
+    val header = JoseHeader(Algorithm.HS256, None, None, Some(Kid.fromUnsafe("k1")), None, None, None)
     val claims = RegisteredClaims(Some("wrong-issuer"), None, None, None, None, None, None)
     val token = createToken(header, claims, data => SignatureEngine.sign(data, hmac256Key, Algorithm.HS256))
     val config = validConfig(NonEmptyChunk(Algorithm.HS256)).copy(requiredIssuer = Some("expected-issuer"))
@@ -237,7 +244,7 @@ class JwtValidatorSuite extends ZSuite:
   testZ("rejects token with missing issuer when required") {
     val jwk = Jwk.from(hmac256Key, Some(Kid.fromUnsafe("k1"))).toOption.get
     val keySource = KeySource.static(jwk)
-    val header = JoseHeader(Algorithm.HS256, None, None, Some(Kid.fromUnsafe("k1")))
+    val header = JoseHeader(Algorithm.HS256, None, None, Some(Kid.fromUnsafe("k1")), None, None, None)
     val claims = RegisteredClaims(None, None, None, None, None, None, None)
     val token = createToken(header, claims, data => SignatureEngine.sign(data, hmac256Key, Algorithm.HS256))
     val config = validConfig(NonEmptyChunk(Algorithm.HS256)).copy(requiredIssuer = Some("expected-issuer"))
@@ -258,7 +265,7 @@ class JwtValidatorSuite extends ZSuite:
   testZ("rejects token with wrong audience") {
     val jwk = Jwk.from(hmac256Key, Some(Kid.fromUnsafe("k1"))).toOption.get
     val keySource = KeySource.static(jwk)
-    val header = JoseHeader(Algorithm.HS256, None, None, Some(Kid.fromUnsafe("k1")))
+    val header = JoseHeader(Algorithm.HS256, None, None, Some(Kid.fromUnsafe("k1")), None, None, None)
     val claims = RegisteredClaims(None, None, Some(Audience("wrong-aud")), None, None, None, None)
     val token = createToken(header, claims, data => SignatureEngine.sign(data, hmac256Key, Algorithm.HS256))
     val config = validConfig(NonEmptyChunk(Algorithm.HS256)).copy(requiredAudience = Some("expected-aud"))
@@ -280,7 +287,7 @@ class JwtValidatorSuite extends ZSuite:
   testZ("rejects token with unsupported algorithm") {
     val jwk = Jwk.from(hmac256Key, Some(Kid.fromUnsafe("k1"))).toOption.get
     val keySource = KeySource.static(jwk)
-    val header = JoseHeader(Algorithm.HS256, None, None, Some(Kid.fromUnsafe("k1")))
+    val header = JoseHeader(Algorithm.HS256, None, None, Some(Kid.fromUnsafe("k1")), None, None, None)
     val claims = RegisteredClaims(None, None, None, None, None, None, None)
     val token = createToken(header, claims, data => SignatureEngine.sign(data, hmac256Key, Algorithm.HS256))
     // Only allow RS256, not HS256
@@ -302,7 +309,7 @@ class JwtValidatorSuite extends ZSuite:
   testZ("rejects token with tampered signature") {
     val jwk = Jwk.from(hmac256Key, Some(Kid.fromUnsafe("k1"))).toOption.get
     val keySource = KeySource.static(jwk)
-    val header = JoseHeader(Algorithm.HS256, None, None, Some(Kid.fromUnsafe("k1")))
+    val header = JoseHeader(Algorithm.HS256, None, None, Some(Kid.fromUnsafe("k1")), None, None, None)
     val claims = RegisteredClaims(None, None, None, None, None, None, None)
     val validToken = createToken(header, claims, data => SignatureEngine.sign(data, hmac256Key, Algorithm.HS256)).toOption.get
     // Tamper: flip a character in the signature segment
@@ -323,7 +330,7 @@ class JwtValidatorSuite extends ZSuite:
   testZ("accepts token with correct issuer") {
     val jwk = Jwk.from(hmac256Key, Some(Kid.fromUnsafe("k1"))).toOption.get
     val keySource = KeySource.static(jwk)
-    val header = JoseHeader(Algorithm.HS256, None, None, Some(Kid.fromUnsafe("k1")))
+    val header = JoseHeader(Algorithm.HS256, None, None, Some(Kid.fromUnsafe("k1")), None, None, None)
     val claims = RegisteredClaims(Some("correct-issuer"), None, None, None, None, None, None)
     val token = createToken(header, claims, data => SignatureEngine.sign(data, hmac256Key, Algorithm.HS256))
     val config = validConfig(NonEmptyChunk(Algorithm.HS256)).copy(requiredIssuer = Some("correct-issuer"))
@@ -338,7 +345,7 @@ class JwtValidatorSuite extends ZSuite:
   testZ("accepts token with correct audience") {
     val jwk = Jwk.from(hmac256Key, Some(Kid.fromUnsafe("k1"))).toOption.get
     val keySource = KeySource.static(jwk)
-    val header = JoseHeader(Algorithm.HS256, None, None, Some(Kid.fromUnsafe("k1")))
+    val header = JoseHeader(Algorithm.HS256, None, None, Some(Kid.fromUnsafe("k1")), None, None, None)
     val claims = RegisteredClaims(None, None, Some(Audience("correct-aud")), None, None, None, None)
     val token = createToken(header, claims, data => SignatureEngine.sign(data, hmac256Key, Algorithm.HS256))
     val config = validConfig(NonEmptyChunk(Algorithm.HS256)).copy(requiredAudience = Some("correct-aud"))
@@ -353,7 +360,7 @@ class JwtValidatorSuite extends ZSuite:
   testZ("rejects token with wrong typ") {
     val jwk = Jwk.from(hmac256Key, Some(Kid.fromUnsafe("k1"))).toOption.get
     val keySource = KeySource.static(jwk)
-    val header = JoseHeader(Algorithm.HS256, Some("at+jwt"), None, Some(Kid.fromUnsafe("k1")))
+    val header = JoseHeader(Algorithm.HS256, Some("at+jwt"), None, Some(Kid.fromUnsafe("k1")), None, None, None)
     val claims = RegisteredClaims(None, None, None, None, None, None, None)
     val token = createToken(header, claims, data => SignatureEngine.sign(data, hmac256Key, Algorithm.HS256))
     val config = validConfig(NonEmptyChunk(Algorithm.HS256)).copy(requiredTyp = Some("JWT"))
@@ -363,8 +370,8 @@ class JwtValidatorSuite extends ZSuite:
       .map { result =>
         assert(result.isLeft)
         result.swap.toOption.get match
-          case JwtError.MalformedToken(_) => ()
-          case other                      => fail(s"Expected MalformedToken for typ mismatch, got $other")
+          case JwtError.InvalidTyp(_, _) => ()
+          case other                     => fail(s"Expected InvalidTyp for typ mismatch, got $other")
       }
       .provide(validatorLayer(config, keySource))
   }
@@ -372,13 +379,131 @@ class JwtValidatorSuite extends ZSuite:
   testZ("accepts token with matching typ") {
     val jwk = Jwk.from(hmac256Key, Some(Kid.fromUnsafe("k1"))).toOption.get
     val keySource = KeySource.static(jwk)
-    val header = JoseHeader(Algorithm.HS256, Some("JWT"), None, Some(Kid.fromUnsafe("k1")))
+    val header = JoseHeader(Algorithm.HS256, Some("JWT"), None, Some(Kid.fromUnsafe("k1")), None, None, None)
     val claims = RegisteredClaims(None, None, None, None, None, None, None)
     val token = createToken(header, claims, data => SignatureEngine.sign(data, hmac256Key, Algorithm.HS256))
     val config = validConfig(NonEmptyChunk(Algorithm.HS256)).copy(requiredTyp = Some("JWT"))
     ZIO
       .serviceWithZIO[JwtValidator](_.validate[Unit](token.toOption.get))
       .map(jwt => assertEquals(jwt.header.typ, Some("JWT")))
+      .provide(validatorLayer(config, keySource))
+  }
+
+  // -- decode (no verification) --
+
+  testZ("decode returns claims without signature verification") {
+    val jwk = Jwk.from(hmac256Key, Some(Kid.fromUnsafe("k1"))).toOption.get
+    val keySource = KeySource.static(jwk)
+    val header = JoseHeader(Algorithm.HS256, None, None, Some(Kid.fromUnsafe("k1")), None, None, None)
+    val claims = RegisteredClaims(Some("decode-test"), None, None, None, None, None, None)
+    val token = createToken(header, claims, data => SignatureEngine.sign(data, hmac256Key, Algorithm.HS256))
+    val config = validConfig(NonEmptyChunk(Algorithm.HS256))
+    ZIO
+      .serviceWithZIO[JwtValidator](_.decode[Unit](token.toOption.get))
+      .map { jwt =>
+        assertEquals(jwt.registeredClaims.iss, Some("decode-test"))
+      }
+      .provide(validatorLayer(config, keySource))
+  }
+
+  testZ("decode succeeds even with expired token") {
+    val jwk = Jwk.from(hmac256Key, Some(Kid.fromUnsafe("k1"))).toOption.get
+    val keySource = KeySource.static(jwk)
+    val header = JoseHeader(Algorithm.HS256, None, None, Some(Kid.fromUnsafe("k1")), None, None, None)
+    val pastExp = NumericDate.fromEpochSecond(Instant.now().minusSeconds(3600).getEpochSecond)
+    val claims = RegisteredClaims(None, None, None, Some(pastExp), None, None, None)
+    val token = createToken(header, claims, data => SignatureEngine.sign(data, hmac256Key, Algorithm.HS256))
+    val config = validConfig(NonEmptyChunk(Algorithm.HS256))
+    ZIO
+      .serviceWithZIO[JwtValidator](_.decode[Unit](token.toOption.get))
+      .map { jwt =>
+        assert(jwt.registeredClaims.exp.isDefined)
+      }
+      .provide(validatorLayer(config, keySource))
+  }
+
+  // -- validateAll (accumulated errors) --
+
+  testZ("validateAll accumulates multiple claim errors") {
+    val jwk = Jwk.from(hmac256Key, Some(Kid.fromUnsafe("k1"))).toOption.get
+    val keySource = KeySource.static(jwk)
+    val header = JoseHeader(Algorithm.HS256, None, None, Some(Kid.fromUnsafe("k1")), None, None, None)
+    val pastExp = NumericDate.fromEpochSecond(Instant.now().minusSeconds(3600).getEpochSecond)
+    val claims = RegisteredClaims(Some("wrong"), None, None, Some(pastExp), None, None, None)
+    val token = createToken(header, claims, data => SignatureEngine.sign(data, hmac256Key, Algorithm.HS256))
+    val config = validConfig(NonEmptyChunk(Algorithm.HS256)).copy(requiredIssuer = Some("expected"))
+    ZIO
+      .serviceWithZIO[JwtValidator](_.validateAll[Unit](token.toOption.get))
+      .flip
+      .map { errors =>
+        assert(errors.size >= 2, s"Expected at least 2 errors, got ${errors.size}: $errors")
+        assert(errors.exists(_.isInstanceOf[JwtError.Expired]))
+        assert(errors.exists(_.isInstanceOf[JwtError.InvalidIssuer])) // scalafix:ok
+      }
+      .provide(validatorLayer(config, keySource))
+  }
+
+  testZ("validateAll succeeds when all claims are valid") {
+    val jwk = Jwk.from(hmac256Key, Some(Kid.fromUnsafe("k1"))).toOption.get
+    val keySource = KeySource.static(jwk)
+    val header = JoseHeader(Algorithm.HS256, None, None, Some(Kid.fromUnsafe("k1")), None, None, None)
+    val claims = RegisteredClaims(None, None, None, None, None, None, None)
+    val token = createToken(header, claims, data => SignatureEngine.sign(data, hmac256Key, Algorithm.HS256))
+    val config = validConfig(NonEmptyChunk(Algorithm.HS256))
+    ZIO
+      .serviceWithZIO[JwtValidator](_.validateAll[Unit](token.toOption.get))
+      .map(jwt => assertEquals(jwt.header.alg, Algorithm.HS256))
+      .provide(validatorLayer(config, keySource))
+  }
+
+  // -- EdDSA validation --
+
+  testZ("validates a valid EdDSA Ed25519 token") {
+    val pub = ed25519KeyPair.getPublic.asInstanceOf[JcaEdEcPublicKey] // scalafix:ok DisableSyntax.asInstanceOf; JCA KeyPair type narrowing
+    val jwk = Jwk.from(pub, Some(Kid.fromUnsafe("ed1"))).toOption.get
+    val keySource = KeySource.static(jwk)
+    val header = JoseHeader(Algorithm.EdDSA, None, None, Some(Kid.fromUnsafe("ed1")), None, None, None)
+    val claims = RegisteredClaims(None, Some("eddsa-test"), None, None, None, None, None)
+    val token = createToken(header, claims, data => SignatureEngine.sign(data, ed25519KeyPair.getPrivate, Algorithm.EdDSA))
+    val config = validConfig(NonEmptyChunk(Algorithm.EdDSA))
+    ZIO
+      .serviceWithZIO[JwtValidator](_.validate[Unit](token.toOption.get))
+      .map(jwt => assertEquals(jwt.registeredClaims.sub, Some("eddsa-test")))
+      .provide(validatorLayer(config, keySource))
+  }
+
+  // -- crit header validation (RFC 7515 ss4.1.11) --
+
+  testZ("rejects token with unsupported crit header parameter") {
+    val jwk = Jwk.from(hmac256Key, Some(Kid.fromUnsafe("k1"))).toOption.get
+    val keySource = KeySource.static(jwk)
+    val header = JoseHeader(Algorithm.HS256, None, None, Some(Kid.fromUnsafe("k1")), None, None, Some(zio.Chunk("x-unknown")))
+    val claims = RegisteredClaims(None, None, None, None, None, None, None)
+    val token = createToken(header, claims, data => SignatureEngine.sign(data, hmac256Key, Algorithm.HS256))
+    val config = validConfig(NonEmptyChunk(Algorithm.HS256))
+    ZIO
+      .serviceWithZIO[JwtValidator](_.validate[Unit](token.toOption.get))
+      .either
+      .map { result =>
+        assert(result.isLeft)
+        result.swap.toOption.get match
+          case JwtError.CriticalHeaderUnsupported(params) =>
+            assert(params.contains("x-unknown"))
+          case other => fail(s"Expected CriticalHeaderUnsupported, got $other")
+      }
+      .provide(validatorLayer(config, keySource))
+  }
+
+  testZ("accepts token with crit listing only understood headers") {
+    val jwk = Jwk.from(hmac256Key, Some(Kid.fromUnsafe("k1"))).toOption.get
+    val keySource = KeySource.static(jwk)
+    val header = JoseHeader(Algorithm.HS256, None, None, Some(Kid.fromUnsafe("k1")), None, None, Some(zio.Chunk("alg")))
+    val claims = RegisteredClaims(None, None, None, None, None, None, None)
+    val token = createToken(header, claims, data => SignatureEngine.sign(data, hmac256Key, Algorithm.HS256))
+    val config = validConfig(NonEmptyChunk(Algorithm.HS256))
+    ZIO
+      .serviceWithZIO[JwtValidator](_.validate[Unit](token.toOption.get))
+      .map(jwt => assertEquals(jwt.header.crit, Some(zio.Chunk("alg"))))
       .provide(validatorLayer(config, keySource))
   }
 end JwtValidatorSuite

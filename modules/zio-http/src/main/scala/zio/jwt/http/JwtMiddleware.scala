@@ -21,13 +21,18 @@
 package zio.jwt.http
 
 import zio.ZIO
+import zio.http.Handler
 import zio.http.HandlerAspect
 import zio.http.Header
 import zio.http.Headers
+import zio.http.Response
 import zio.http.Status
+
+import boilerplate.nullable.*
 
 import zio.jwt.Jwt
 import zio.jwt.JwtCodec
+import zio.jwt.JwtError
 import zio.jwt.JwtValidator
 import zio.jwt.TokenString
 
@@ -38,7 +43,9 @@ object JwtMiddleware:
     * validates the token via [[JwtValidator]], and provides the decoded [[Jwt]] as handler context.
     *
     * Returns HTTP 401 Unauthorized with a `WWW-Authenticate: Bearer` header when the token is
-    * missing or invalid.
+    * missing or invalid. All errors are folded into a generic 401 with no detail. For production
+    * use prefer the overload accepting an `onError` handler for logging and differentiated
+    * responses.
     */
   def bearer[A: JwtCodec]: HandlerAspect[JwtValidator, Jwt[A]] =
     HandlerAspect.customAuthProvidingZIO(
@@ -55,5 +62,32 @@ object JwtMiddleware:
           case _ => ZIO.succeed(None),
       responseHeaders = Headers(Header.WWWAuthenticate.Bearer(realm = "Access")),
       responseStatus = Status.Unauthorized
+    )
+
+  /** Bearer token authentication middleware with custom error handling. The `onError` function
+    * receives the specific [[JwtError]] and returns a [[Response]], enabling custom error bodies,
+    * logging, or differentiated status codes (e.g. 403 for expired vs 401 for missing).
+    */
+  def bearer[A: JwtCodec](
+    onError: JwtError => Response
+  ): HandlerAspect[JwtValidator, Jwt[A]] =
+    HandlerAspect.interceptIncomingHandler[JwtValidator, Jwt[A]](
+      Handler.fromFunctionZIO[zio.http.Request] { request =>
+        request.header(Header.Authorization) match
+          case Some(Header.Authorization.Bearer(token)) =>
+            val raw = token.value.asString
+            TokenString.from(raw) match
+              case Left(e) =>
+                ZIO.fail(onError(JwtError.MalformedToken(e.getMessage.getOrElse("malformed token"))))
+              case Right(ts) =>
+                ZIO
+                  .serviceWithZIO[JwtValidator](_.validate[A](ts))
+                  .mapBoth(
+                    err => onError(err),
+                    jwt => (request, jwt)
+                  )
+          case _ =>
+            ZIO.fail(onError(JwtError.MissingToken))
+      }
     )
 end JwtMiddleware

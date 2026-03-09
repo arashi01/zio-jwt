@@ -25,10 +25,16 @@ import java.time.Duration
 import java.time.Instant
 
 import scala.util.Try
+import scala.util.boundary
+import scala.util.boundary.break
 
+import zio.Chunk
 import zio.IO
+import zio.NonEmptyChunk
 import zio.ZIO
 import zio.ZLayer
+
+import boilerplate.nullable.*
 
 import zio.jwt.crypto.SignatureEngine
 
@@ -36,7 +42,29 @@ import zio.jwt.crypto.SignatureEngine
   * [[JwtValidator$ JwtValidator]].live.
   */
 trait JwtValidator:
+  /** Validates the token fully: parses, verifies the signature, and checks all claims. */
   def validate[A: JwtCodec](token: TokenString): IO[JwtError, Jwt[A]]
+
+  /** Decodes a token without signature verification or claim validation. Useful for debugging, log
+    * enrichment, or routing based on unverified claims (e.g. selecting key source by `iss`).
+    *
+    * Algorithm allowlist checking is also skipped - the header may contain any algorithm string,
+    * including ones not in [[ValidationConfig.allowedAlgorithms]].
+    *
+    * The `crit` header parameter is not checked - tokens with unsupported critical parameters will
+    * decode successfully.
+    *
+    * '''Security warning''': the returned [[UnverifiedJwt]] has not been verified - do not trust
+    * its contents for authorisation decisions.
+    */
+  def decode[A: JwtCodec](token: TokenString): IO[JwtError, UnverifiedJwt[A]]
+
+  /** Validates the token and accumulates all claim validation errors rather than failing on the
+    * first one. Signature verification still fails fast. Returns a
+    * [[zio.NonEmptyChunk NonEmptyChunk]] of errors if any claim validation fails.
+    */
+  def validateAll[A: JwtCodec](token: TokenString): IO[NonEmptyChunk[JwtError], Jwt[A]]
+end JwtValidator
 
 /** Companion for [[JwtValidator]]. Provides the live layer and validation utilities. */
 object JwtValidator:
@@ -66,21 +94,23 @@ object JwtValidator:
 
   // scalafix:off DisableSyntax.asInstanceOf; bypasses opaque type allowing deferred inline methods on JwtCodec
   private inline def parseSegments(token: TokenString): Either[JwtError, TokenSegments] =
-    Try {
-      import scala.language.unsafeNulls
-      val raw = token.asInstanceOf[String]
-      val dot1 = raw.indexOf('.')
-      val dot2 = raw.indexOf('.', dot1 + 1)
-      val decoder = java.util.Base64.getUrlDecoder
-      TokenSegments(
-        headerBytes = decoder.decode(raw.substring(0, dot1)),
-        payloadBytes = decoder.decode(raw.substring(dot1 + 1, dot2)),
-        signatureBytes = decoder.decode(raw.substring(dot2 + 1)),
-        signingInput = raw.substring(0, dot2).getBytes(StandardCharsets.US_ASCII)
-      )
-    }.toEither.left.map(JwtError.MalformedToken.apply)
+    val raw = token.asInstanceOf[String]
+    val dot1 = raw.indexOf('.')
+    val dot2 = if dot1 >= 0 then raw.indexOf('.', dot1 + 1) else -1
+    if dot1 < 0 || dot2 < 0 then Left(JwtError.MalformedToken("Token must contain exactly three segments"))
+    else
+      Try {
+        val decoder = java.util.Base64.getUrlDecoder
+        TokenSegments(
+          headerBytes = decoder.decode(raw.substring(0, dot1)).unsafe,
+          payloadBytes = decoder.decode(raw.substring(dot1 + 1, dot2)).unsafe,
+          signatureBytes = decoder.decode(raw.substring(dot2 + 1)).unsafe,
+          signingInput = raw.substring(0, dot2).getBytes(StandardCharsets.US_ASCII).unsafe
+        )
+      }.toEither.left.map(e => JwtError.MalformedToken(e.getMessage.getOrElse("malformed token")))
+  end parseSegments
 
-  // -- Temporal validation (ss10.1) --
+  // -- Temporal validation --
 
   private inline def validateExp(exp: NumericDate, now: Instant, clockSkew: Duration): Either[JwtError, Unit] =
     // RFC 7519 ss4.1.4: reject when now >= exp + clockSkew
@@ -103,9 +133,7 @@ object JwtValidator:
     Either.cond(
       actual.contains(expected),
       (),
-      JwtError.MalformedToken(
-        IllegalArgumentException(s"Expected typ '$expected', got ${actual.getOrElse("none")}")
-      )
+      JwtError.InvalidTyp(expected, actual)
     )
 
   // -- Live implementation --
@@ -121,21 +149,87 @@ object JwtValidator:
       for
         // Step 1: Parse token segments
         segments <- ZIO.fromEither(parseSegments(token))
-        // Step 2: Decode header and validate algorithm
-        header <- ZIO.fromEither(headerCodec.decode(segments.headerBytes).left.map(JwtError.MalformedToken(_)))
+        // Step 2: Decode header, validate crit, and validate algorithm
+        header <-
+          ZIO.fromEither(
+            headerCodec.decode(segments.headerBytes).left.map(e => JwtError.DecodeError(e.getMessage.getOrElse("header decode failed")))
+          )
+        _ <- ZIO.fromEither(checkCritHeader(header))
         _ <- ZIO.fromEither(checkAlgorithmAllowed(header.alg))
         // Step 3 + 4: Resolve key and verify signature
         _ <- verifySignature(header, segments)
         // Step 5: Decode claims
-        customClaims <- ZIO.fromEither(summon[JwtCodec[A]].decode(segments.payloadBytes).left.map(JwtError.MalformedToken(_)))
-        registeredClaims <- ZIO.fromEither(claimsCodec.decode(segments.payloadBytes).left.map(JwtError.MalformedToken(_)))
+        customClaims <- ZIO.fromEither(
+                          summon[JwtCodec[A]]
+                            .decode(segments.payloadBytes)
+                            .left
+                            .map(e => JwtError.DecodeError(e.getMessage.getOrElse("claims decode failed")))
+                        )
+        registeredClaims <-
+          ZIO.fromEither(
+            claimsCodec.decode(segments.payloadBytes).left.map(e => JwtError.DecodeError(e.getMessage.getOrElse("claims decode failed")))
+          )
         // Step 6: Validate claims
         now <- zio.Clock.instant
         _ <- ZIO.fromEither(validateAllClaims(header, registeredClaims, now))
       yield Jwt(header, customClaims, registeredClaims)
 
+    inline def decode[A: JwtCodec](token: TokenString): IO[JwtError, UnverifiedJwt[A]] =
+      ZIO.fromEither(JwtDecoder.decode[A](token)(using summon[JwtCodec[A]], headerCodec, claimsCodec))
+
+    inline def validateAll[A: JwtCodec](token: TokenString): IO[NonEmptyChunk[JwtError], Jwt[A]] =
+      val structural: IO[JwtError, (JoseHeader, A, RegisteredClaims)] =
+        for
+          segments <- ZIO.fromEither(parseSegments(token))
+          header <-
+            ZIO.fromEither(
+              headerCodec.decode(segments.headerBytes).left.map(e => JwtError.DecodeError(e.getMessage.getOrElse("header decode failed")))
+            )
+          _ <- ZIO.fromEither(checkCritHeader(header))
+          _ <- ZIO.fromEither(checkAlgorithmAllowed(header.alg))
+          _ <- verifySignature(header, segments)
+          customClaims <-
+            ZIO.fromEither(
+              summon[JwtCodec[A]]
+                .decode(segments.payloadBytes)
+                .left
+                .map(e => JwtError.DecodeError(e.getMessage.getOrElse("claims decode failed")))
+            )
+          registeredClaims <-
+            ZIO.fromEither(
+              claimsCodec.decode(segments.payloadBytes).left.map(e => JwtError.DecodeError(e.getMessage.getOrElse("claims decode failed")))
+            )
+        yield (header, customClaims, registeredClaims)
+      structural
+        .mapError(e => NonEmptyChunk(e))
+        .flatMap { case (header, customClaims, registeredClaims) =>
+          zio.Clock.instant.flatMap { now =>
+            ZIO
+              .fromEither(accumulateClaimErrors(header, registeredClaims, now))
+              .as(Jwt(header, customClaims, registeredClaims))
+          }
+        }
+    end validateAll
+
+    /** The set of header parameter names this implementation understands (RFC 7515 ss4.1.11). */
+    private val understoodHeaders: Set[String] =
+      Set("alg", "typ", "cty", "kid", "x5t", "x5t#S256", "crit")
+
+    /** Validates the `crit` header per RFC 7515 ss4.1.11. If present, every listed parameter must
+      * be in the set of understood headers; otherwise the token is rejected.
+      */
+    private inline def checkCritHeader(header: JoseHeader): Either[JwtError, Unit] =
+      header.crit match
+        case None                           => Right(())
+        case Some(params) if params.isEmpty =>
+          Left(JwtError.MalformedToken("crit must not be empty (RFC 7515 ss4.1.11)"))
+        case Some(params) =>
+          val unsupported = params.filter(p => !understoodHeaders.contains(p))
+          if unsupported.isEmpty then Right(())
+          else Left(JwtError.CriticalHeaderUnsupported(unsupported))
+
     private inline def checkAlgorithmAllowed(alg: Algorithm): Either[JwtError, Unit] =
-      Either.cond(config.allowedAlgorithms.contains(alg), (), JwtError.UnsupportedAlgorithm(alg.toString))
+      Either.cond(config.allowedAlgorithms.contains(alg), (), JwtError.UnsupportedAlgorithm(alg.name))
 
     private inline def verifySignature(header: JoseHeader, segments: TokenSegments): IO[JwtError, Unit] =
       header.alg.family match
@@ -153,12 +247,51 @@ object JwtValidator:
       claims: RegisteredClaims,
       now: Instant
     ): Either[JwtError, Unit] =
-      for
-        _ <- claims.exp.fold[Either[JwtError, Unit]](Right(()))(e => validateExp(e, now, config.clockSkew))
-        _ <- claims.nbf.fold[Either[JwtError, Unit]](Right(()))(n => validateNbf(n, now, config.clockSkew))
-        _ <- config.requiredIssuer.fold[Either[JwtError, Unit]](Right(()))(iss => validateIss(iss, claims.iss))
-        _ <- config.requiredAudience.fold[Either[JwtError, Unit]](Right(()))(aud => validateAud(aud, claims.aud))
-        _ <- config.requiredTyp.fold[Either[JwtError, Unit]](Right(()))(typ => validateTyp(typ, header.typ))
-      yield ()
+      boundary:
+        claims.exp.foreach(e =>
+          validateExp(e, now, config.clockSkew) match
+            case Left(err) => break(Left(err))
+            case _         => ()
+        )
+        claims.nbf.foreach(n =>
+          validateNbf(n, now, config.clockSkew) match
+            case Left(err) => break(Left(err))
+            case _         => ()
+        )
+        config.requiredIssuer.foreach(iss =>
+          validateIss(iss, claims.iss) match
+            case Left(err) => break(Left(err))
+            case _         => ()
+        )
+        config.requiredAudience.foreach(aud =>
+          validateAud(aud, claims.aud) match
+            case Left(err) => break(Left(err))
+            case _         => ()
+        )
+        config.requiredTyp.foreach(typ =>
+          validateTyp(typ, header.typ) match
+            case Left(err) => break(Left(err))
+            case _         => ()
+        )
+        Right(())
+
+    /** Collects all claim validation errors. Returns [[Left]] with the accumulated errors when at
+      * least one claim check fails, or [[Right]] if all pass.
+      */
+    private inline def accumulateClaimErrors(
+      header: JoseHeader,
+      claims: RegisteredClaims,
+      now: Instant
+    ): Either[NonEmptyChunk[JwtError], Unit] =
+      val builder = Chunk.newBuilder[JwtError]
+      claims.exp.foreach(e => validateExp(e, now, config.clockSkew).left.foreach(builder += _))
+      claims.nbf.foreach(n => validateNbf(n, now, config.clockSkew).left.foreach(builder += _))
+      config.requiredIssuer.foreach(iss => validateIss(iss, claims.iss).left.foreach(builder += _))
+      config.requiredAudience.foreach(aud => validateAud(aud, claims.aud).left.foreach(builder += _))
+      config.requiredTyp.foreach(typ => validateTyp(typ, header.typ).left.foreach(builder += _))
+      NonEmptyChunk.fromChunk(builder.result()) match
+        case Some(nec) => Left(nec)
+        case None      => Right(())
+    end accumulateClaimErrors
   end LiveValidator
 end JwtValidator

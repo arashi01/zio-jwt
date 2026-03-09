@@ -33,7 +33,7 @@ zio-jwt provides all of the above as a single library, eliminating the third-par
 ## Modules
 
 ```
-zio-jwt-core       (JVM / JS / Native)   Data types, error ADT, codec trait
+zio-jwt-core       (JVM / JS / Native)   Data types, error ADT, codec trait, JwtDecoder
 zio-jwt-jsoniter   (JVM / JS / Native)   jsoniter-scala codec instances
 zio-jwt            (JVM)                 JCA crypto, signing, validation, JWK, KeySource
 zio-http-jwt       (JVM)                 zio-http middleware, JWKS client, background refresh
@@ -111,7 +111,10 @@ val issuerConfig = JwtIssuerConfig(
   algorithm = Algorithm.ES256,
   kid = Some(Kid.fromUnsafe("my-key-1")),
   typ = Some("JWT"),
-  cty = None
+  cty = None,
+  x5t = None,
+  x5tS256 = None,
+  crit = None
 )
 
 val program: IO[JwtError, TokenString] =
@@ -210,7 +213,7 @@ val source: KeySource = KeySource.static(myJwk)
 val source2: KeySource = KeySource.static(Chunk(jwk1, jwk2))
 ```
 
-JWK variants: `EcPublicKey`, `EcPrivateKey`, `RsaPublicKey`, `RsaPrivateKey`, `SymmetricKey`. Key resolution filters by `use`, `key_ops`, `alg`, and `kid` before converting to JCA keys.
+JWK variants: `EcPublicKey`, `EcPrivateKey`, `RsaPublicKey`, `RsaPrivateKey`, `SymmetricKey`, `OkpPublicKey`, `OkpPrivateKey`. Key resolution filters by `use`, `key_ops`, `alg`, and `kid` before converting to JCA keys.
 
 ---
 
@@ -222,6 +225,7 @@ JWK variants: `EcPublicKey`, `EcPrivateKey`, `RsaPublicKey`, `RsaPrivateKey`, `S
 | RSA PKCS#1 v1.5 | RS256, RS384, RS512 |
 | ECDSA | ES256 (P-256), ES384 (P-384), ES512 (P-521) |
 | RSA-PSS | PS256, PS384, PS512 |
+| EdDSA (RFC 8037) | EdDSA (Ed25519, Ed448) |
 
 `alg:none` is unconditionally rejected. There is no `Algorithm.None` variant.
 
@@ -233,7 +237,10 @@ JWK variants: `EcPublicKey`, `EcPrivateKey`, `RsaPublicKey`, `RsaPrivateKey`, `S
 - **ECDSA signature validation** (CVE-2022-21449) -- rejects zero-value R/S, validates R and S against curve order
 - **EC point-on-curve validation** -- independent of JCA provider, prevents invalid-curve attacks
 - **RSA minimum key size** -- rejects keys with modulus below 2048 bits
+- **HMAC minimum key size** (RFC 7518 ss3.2) -- rejects secret keys shorter than the hash output (256/384/512 bits for HS256/HS384/HS512)
 - **Constant-time HMAC comparison** -- single-pass XOR accumulation, no short-circuit
+- **EdDSA signature length validation** -- rejects signatures with incorrect byte length before JCA verify (Ed25519: 64 bytes, Ed448: 114 bytes)
+- **`crit` header processing** (RFC 7515 ss4.1.11) -- rejects tokens with unrecognised or empty critical header parameters
 
 ---
 
@@ -248,9 +255,17 @@ enum JwtError extends Throwable with NoStackTrace:
   case InvalidAudience(expected: String, actual: Option[Audience])
   case InvalidIssuer(expected: String, actual: Option[String])
   case InvalidSignature
-  case MalformedToken(cause: Throwable)
+  case MalformedToken(message: String)
+  case DecodeError(message: String)
+  case EncodeError(message: String)
+  case InvalidKey(message: String)
+  case InvalidTyp(expected: String, actual: Option[String])
   case UnsupportedAlgorithm(alg: String)
   case KeyNotFound(kid: Option[Kid])
+  case AmbiguousKey(kid: Option[Kid], count: Int)
+  case FetchError(message: String)
+  case MissingToken
+  case CriticalHeaderUnsupported(parameters: Chunk[String])
 ```
 
 Pattern match directly on the error channel:
@@ -272,10 +287,10 @@ JSON serialisation is pluggable via `JwtCodec[A]`:
 ```scala
 trait JwtCodec[A]:
   def decode(bytes: Array[Byte]): Either[Throwable, A]
-  def encode(value: A): Array[Byte]
+  def encode(value: A): Either[Throwable, Array[Byte]]
 ```
 
-`zio-jwt-jsoniter` provides instances for all library types. Instances are injected into `JwtValidator.live` and `JwtIssuer.live` via `using` parameters -- bring them into scope with `import zio.jwt.jsoniter.given`.
+`zio-jwt-jsoniter` provides instances for all library types. Instances are injected into `JwtValidator.live` and `JwtIssuer.live` via `using` parameters - bring them into scope with `import zio.jwt.jsoniter.given`.
 
 To use a different JSON library, implement `JwtCodec` for `JoseHeader`, `RegisteredClaims`, and your custom claims type.
 
@@ -291,10 +306,26 @@ All library types derive `CanEqual`, so they work seamlessly with `-language:str
 
 The following are under consideration for future releases:
 
+- **Cross-platform JwtDecoder** -- decode tokens without signature verification in `zio-jwt-core` (JVM/JS/Native) -- **IMPLEMENTED**
+- **JWK Thumbprint** (RFC 7638) -- key identification by content hash
+- **X.509 Thumbprint computation** -- compute x5t/x5tS256 from certificates
+- **OIDC Discovery** -- auto-discover JWKS URLs from `/.well-known/openid-configuration`
 - **JWE (encrypted JWT)** -- `JweDecryptor` / `JweEncryptor` services with `AES-GCM` and `RSA-OAEP` key management
 - **Nested JWT** -- sign-then-encrypt and encrypt-then-sign composition via `cty: "JWT"`
 - **Custom JOSE header fields** -- type-safe extensible header model beyond `alg`, `typ`, `cty`, `kid`
 - **kid-absent token handling** -- relaxed key resolution accepting a single-key `KeySource` without requiring `kid` in the token header
+
+---
+
+## Standards Compliance
+
+| Standard | Status |
+|---|---|
+| RFC 7519 (JWT) | Complete |
+| RFC 7515 (JWS) | Complete (incl. `crit` header processing) |
+| RFC 7517 (JWK) | Complete (EC, RSA, oct, OKP) |
+| RFC 7518 (JWA) | Complete (HMAC, RSA, ECDSA, RSA-PSS, EdDSA) |
+| RFC 8037 (EdDSA/OKP) | Complete |
 
 ---
 
