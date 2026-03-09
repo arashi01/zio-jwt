@@ -27,6 +27,8 @@ import zio.http.Client
 import zio.http.Request
 import zio.http.URL
 
+import boilerplate.nullable.*
+
 import zio.jwt.JwkSet
 import zio.jwt.JwtCodec
 import zio.jwt.JwtError
@@ -64,7 +66,7 @@ object JwksFetcher:
         case Some(url) =>
           val request = Request.get(url)
           (for
-            response <- Client.batched(request).mapError(e => JwtError.FetchError(e.getMessage.nn))
+            response <- Client.batched(request).mapError(e => JwtError.FetchError(e.getMessage.getOrElse("fetch failed")))
             _ <- ZIO.when(!response.status.isSuccess)(
                    ZIO.fail(
                      JwtError.FetchError(
@@ -72,8 +74,8 @@ object JwksFetcher:
                      )
                    )
                  )
-            bytes <- response.body.asArray.mapError(e => JwtError.FetchError(e.getMessage.nn))
-            jwkSet <- ZIO.fromEither(jwkSetCodec.decode(bytes).left.map(e => JwtError.DecodeError(e.getMessage.nn)))
+            bytes <- response.body.asArray.mapError(e => JwtError.FetchError(e.getMessage.getOrElse("body read failed")))
+            jwkSet <- ZIO.fromEither(jwkSetCodec.decode(bytes).left.map(e => JwtError.DecodeError(e.getMessage.getOrElse("decode failed"))))
           yield jwkSet).provideEnvironment(zio.ZEnvironment(client))
   end LiveFetcher
 end JwksFetcher

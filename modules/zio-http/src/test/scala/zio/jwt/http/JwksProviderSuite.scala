@@ -126,7 +126,7 @@ class JwksProviderSuite extends ZSuite:
       yield
         // Should still have the initial good keys
         assertEquals(keys.size, 1)
-        assertEquals(keys.head.keyId, Some(Kid.fromUnsafe("good-key")))
+        assertEquals(keys.head.kid, Some(Kid.fromUnsafe("good-key")))
     }
   }
 

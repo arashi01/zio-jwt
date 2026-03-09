@@ -32,6 +32,8 @@ import zio.ZIO
 import zio.ZLayer
 import zio.http.Client
 
+import boilerplate.nullable.*
+
 import zio.jwt.Jwk
 import zio.jwt.JwkSet
 import zio.jwt.JwtCodec
@@ -107,11 +109,10 @@ object JwksProvider:
 
   /** Validates that the JWKS URL uses the HTTPS scheme. */
   private inline def validateHttpsUrl(url: java.net.URI): Either[JwtError, Unit] =
-    import scala.language.unsafeNulls
     Either.cond(
-      url.getScheme == "https",
+      url.getScheme.getOrElse("") == "https",
       (),
-      JwtError.FetchError(s"JWKS URL must use HTTPS scheme, got: ${url.getScheme}")
+      JwtError.FetchError(s"JWKS URL must use HTTPS scheme, got: ${url.getScheme.getOrElse("null")}")
     )
 
   private def doFetch(

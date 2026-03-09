@@ -100,10 +100,5 @@ object Algorithm:
       case Algorithm.ES384 => Some(EcCurve.P384)
       case Algorithm.ES512 => Some(EcCurve.P521)
       case _               => None
-
-    /** OKP curve for this algorithm, if applicable. */
-    def okpCurve: Option[OkpCurve] = alg match
-      case Algorithm.EdDSA => None // EdDSA is curve-agnostic; curve determined by key
-      case _               => None
   end extension
 end Algorithm

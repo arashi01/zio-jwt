@@ -26,10 +26,15 @@ import zio.IO
 import zio.ZIO
 import zio.ZLayer
 
+import boilerplate.nullable.*
+
 import zio.jwt.crypto.SignatureEngine
 
 /** Service for issuing JWT tokens. Instances live in the ZIO environment; construct via
   * [[JwtIssuer$ JwtIssuer]].live.
+  *
+  * When custom claims share field names with registered claims (e.g. `iss`, `sub`, `aud`, `exp`,
+  * `nbf`, `iat`, `jti`), registered claims take precedence (appear last in the merged JSON).
   */
 trait JwtIssuer:
   def issue[A: JwtCodec](claims: A, registeredClaims: RegisteredClaims): IO[JwtError, TokenString]
@@ -54,8 +59,7 @@ object JwtIssuer:
   private val base64UrlEncoder = java.util.Base64.getUrlEncoder.withoutPadding()
 
   private inline def base64UrlEncode(bytes: Array[Byte]): String =
-    import scala.language.unsafeNulls
-    base64UrlEncoder.encodeToString(bytes)
+    base64UrlEncoder.encodeToString(bytes).unsafe
 
   /** Merges two JSON objects at byte level. Fields from `secondary` appear after `primary` in the
     * output, giving secondary precedence on field collisions (last-occurrence-wins per
@@ -94,16 +98,22 @@ object JwtIssuer:
     def issue[A: JwtCodec](claims: A, registeredClaims: RegisteredClaims): IO[JwtError, TokenString] =
       val header = JoseHeader(config.algorithm, config.typ, config.cty, config.kid, config.x5t, config.x5tS256, config.crit)
       for
-        headerBytes <- ZIO.fromEither(headerCodec.encode(header).left.map(e => JwtError.DecodeError(e.getMessage.nn)))
+        headerBytes <-
+          ZIO.fromEither(headerCodec.encode(header).left.map(e => JwtError.EncodeError(e.getMessage.getOrElse("header encode failed"))))
         headerB64 = base64UrlEncode(headerBytes)
-        customBytes <- ZIO.fromEither(summon[JwtCodec[A]].encode(claims).left.map(e => JwtError.DecodeError(e.getMessage.nn)))
-        registeredBytes <- ZIO.fromEither(claimsCodec.encode(registeredClaims).left.map(e => JwtError.DecodeError(e.getMessage.nn)))
+        customBytes <-
+          ZIO.fromEither(summon[JwtCodec[A]].encode(claims).left.map(e => JwtError.EncodeError(e.getMessage.getOrElse("claims encode failed"))))
+        registeredBytes <-
+          ZIO.fromEither(
+            claimsCodec.encode(registeredClaims).left.map(e => JwtError.EncodeError(e.getMessage.getOrElse("claims encode failed")))
+          )
         payloadB64 = base64UrlEncode(mergeJsonObjects(customBytes, registeredBytes))
         signingInput = s"$headerB64.$payloadB64".getBytes(StandardCharsets.US_ASCII)
         signatureBytes <- sign(header, signingInput)
         signatureB64 = base64UrlEncode(signatureBytes)
         tokenRaw = s"$headerB64.$payloadB64.$signatureB64"
-        token <- ZIO.fromEither(TokenString.from(tokenRaw).left.map(e => JwtError.MalformedToken(e.getMessage.nn)))
+        token <-
+          ZIO.fromEither(TokenString.from(tokenRaw).left.map(e => JwtError.MalformedToken(e.getMessage.getOrElse("token construction failed"))))
       yield token
       end for
     end issue

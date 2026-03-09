@@ -28,6 +28,8 @@ import zio.http.Headers
 import zio.http.Response
 import zio.http.Status
 
+import boilerplate.nullable.*
+
 import zio.jwt.Jwt
 import zio.jwt.JwtCodec
 import zio.jwt.JwtError
@@ -76,7 +78,7 @@ object JwtMiddleware:
             val raw = token.value.asString
             TokenString.from(raw) match
               case Left(e) =>
-                ZIO.fail(onError(JwtError.MalformedToken(e.getMessage.nn)))
+                ZIO.fail(onError(JwtError.MalformedToken(e.getMessage.getOrElse("malformed token"))))
               case Right(ts) =>
                 ZIO
                   .serviceWithZIO[JwtValidator](_.validate[A](ts))
@@ -85,7 +87,7 @@ object JwtMiddleware:
                     jwt => (request, jwt)
                   )
           case _ =>
-            ZIO.fail(onError(JwtError.MalformedToken("Missing bearer token")))
+            ZIO.fail(onError(JwtError.MissingToken))
       }
     )
 end JwtMiddleware

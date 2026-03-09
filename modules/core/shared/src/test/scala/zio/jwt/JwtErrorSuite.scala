@@ -135,4 +135,14 @@ class JwtErrorSuite extends munit.FunSuite:
     assert(err.getMessage.contains("x-custom"))
     assert(err.getMessage.contains("x-other"))
   }
+
+  test("EncodeError getMessage wraps message") {
+    val err = JwtError.EncodeError("failed to serialise claims")
+    assert(err.getMessage.contains("Encode error"))
+    assert(err.getMessage.contains("failed to serialise claims"))
+  }
+
+  test("MissingToken getMessage is descriptive") {
+    assertEquals(JwtError.MissingToken.getMessage, "No bearer token provided")
+  }
 end JwtErrorSuite

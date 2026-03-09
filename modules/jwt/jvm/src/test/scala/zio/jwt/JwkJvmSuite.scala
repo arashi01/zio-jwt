@@ -31,11 +31,11 @@ import java.security.spec.ECGenParameterSpec
 import java.security.spec.RSAPublicKeySpec
 import javax.crypto.KeyGenerator
 
-import zio.Chunk
-
+/** JVM-specific tests for [[Jwk]] JCA conversions. Cross-platform data type tests are in the shared
+  * `JwkSuite`.
+  */
 // scalafix:off DisableSyntax.asInstanceOf, DisableSyntax.isInstanceOf; JCA KeyPair returns java.security.Key requiring type-narrowing casts
-
-class JwkSuite extends munit.FunSuite:
+class JwkJvmSuite extends munit.FunSuite:
 
   // -- Test key generation helpers --
 
@@ -128,7 +128,7 @@ class JwkSuite extends munit.FunSuite:
     assert(jwkResult.isRight, jwkResult)
     val jwk = jwkResult.toOption.get
     assert(jwk.isInstanceOf[Jwk.RsaPublicKey])
-    assertEquals(jwk.keyId, Some(Kid.fromUnsafe("rsa-test")))
+    assertEquals(jwk.kid, Some(Kid.fromUnsafe("rsa-test")))
 
     val pubKeyResult = jwk.toPublicKey
     assert(pubKeyResult.isRight, pubKeyResult)
@@ -173,7 +173,7 @@ class JwkSuite extends munit.FunSuite:
     assert(jwkResult.isRight, jwkResult)
     val jwk = jwkResult.toOption.get
     assert(jwk.isInstanceOf[Jwk.SymmetricKey])
-    assertEquals(jwk.keyId, Some(Kid.fromUnsafe("hmac-1")))
+    assertEquals(jwk.kid, Some(Kid.fromUnsafe("hmac-1")))
 
     val secretKeyResult = jwk.toSecretKey
     assert(secretKeyResult.isRight, secretKeyResult)
@@ -185,7 +185,7 @@ class JwkSuite extends munit.FunSuite:
     val key = generateHmacKey()
     val jwkResult = Jwk.from(key)
     assert(jwkResult.isRight, jwkResult)
-    assertEquals(jwkResult.toOption.get.keyId, None)
+    assertEquals(jwkResult.toOption.get.kid, None)
   }
 
   // -- RSA key size rejection --
@@ -258,199 +258,6 @@ class JwkSuite extends munit.FunSuite:
     assert(jwk.toSecretKey.isLeft)
   }
 
-  // -- Common field accessors --
-
-  test("keyUse returns use for all variants") {
-    val ecJwk = Jwk.EcPublicKey(
-      crv = EcCurve.P256,
-      x = Base64UrlString.fromUnsafe("dGVzdA"),
-      y = Base64UrlString.fromUnsafe("dGVzdA"),
-      use = Some(KeyUse.Sig),
-      keyOps = None,
-      alg = None,
-      kid = None
-    )
-    assertEquals(ecJwk.keyUse, Some(KeyUse.Sig))
-
-    val rsaJwk = Jwk.RsaPublicKey(
-      n = Base64UrlString.fromUnsafe("dGVzdA"),
-      e = Base64UrlString.fromUnsafe("AQAB"),
-      use = Some(KeyUse.Enc),
-      keyOps = None,
-      alg = None,
-      kid = None
-    )
-    assertEquals(rsaJwk.keyUse, Some(KeyUse.Enc))
-
-    val symJwk = Jwk.SymmetricKey(
-      k = Base64UrlString.fromUnsafe("dGVzdA"),
-      use = None,
-      keyOps = None,
-      alg = None,
-      kid = None
-    )
-    assertEquals(symJwk.keyUse, None)
-  }
-
-  test("keyOperations returns key_ops for all variants") {
-    val ops = Chunk(KeyOp.Sign, KeyOp.Verify)
-    val jwk = Jwk.EcPublicKey(
-      crv = EcCurve.P384,
-      x = Base64UrlString.fromUnsafe("dGVzdA"),
-      y = Base64UrlString.fromUnsafe("dGVzdA"),
-      use = None,
-      keyOps = Some(ops),
-      alg = None,
-      kid = None
-    )
-    assertEquals(jwk.keyOperations, Some(ops))
-  }
-
-  test("keyAlgorithm returns alg for all variants") {
-    val jwk = Jwk.SymmetricKey(
-      k = Base64UrlString.fromUnsafe("dGVzdA"),
-      use = None,
-      keyOps = None,
-      alg = Some(Algorithm.HS256),
-      kid = None
-    )
-    assertEquals(jwk.keyAlgorithm, Some(Algorithm.HS256))
-  }
-
-  test("keyId returns kid for all variants") {
-    val kid = Kid.fromUnsafe("test-kid")
-    val jwk = Jwk.RsaPublicKey(
-      n = Base64UrlString.fromUnsafe("dGVzdA"),
-      e = Base64UrlString.fromUnsafe("AQAB"),
-      use = None,
-      keyOps = None,
-      alg = None,
-      kid = Some(kid)
-    )
-    assertEquals(jwk.keyId, Some(kid))
-  }
-
-  // -- Filtering tests --
-
-  test("suitableForVerification: no constraints passes") {
-    val jwk = Jwk.EcPublicKey(
-      crv = EcCurve.P256,
-      x = Base64UrlString.fromUnsafe("dGVzdA"),
-      y = Base64UrlString.fromUnsafe("dGVzdA"),
-      use = None,
-      keyOps = None,
-      alg = None,
-      kid = None
-    )
-    assert(jwk.suitableForVerification(Algorithm.ES256))
-  }
-
-  test("suitableForVerification: use=Sig passes") {
-    val jwk = Jwk.EcPublicKey(
-      crv = EcCurve.P256,
-      x = Base64UrlString.fromUnsafe("dGVzdA"),
-      y = Base64UrlString.fromUnsafe("dGVzdA"),
-      use = Some(KeyUse.Sig),
-      keyOps = None,
-      alg = None,
-      kid = None
-    )
-    assert(jwk.suitableForVerification(Algorithm.ES256))
-  }
-
-  test("suitableForVerification: use=Enc fails") {
-    val jwk = Jwk.EcPublicKey(
-      crv = EcCurve.P256,
-      x = Base64UrlString.fromUnsafe("dGVzdA"),
-      y = Base64UrlString.fromUnsafe("dGVzdA"),
-      use = Some(KeyUse.Enc),
-      keyOps = None,
-      alg = None,
-      kid = None
-    )
-    assert(!jwk.suitableForVerification(Algorithm.ES256))
-  }
-
-  test("suitableForVerification: key_ops containing Verify passes") {
-    val jwk = Jwk.EcPublicKey(
-      crv = EcCurve.P256,
-      x = Base64UrlString.fromUnsafe("dGVzdA"),
-      y = Base64UrlString.fromUnsafe("dGVzdA"),
-      use = None,
-      keyOps = Some(Chunk(KeyOp.Verify)),
-      alg = None,
-      kid = None
-    )
-    assert(jwk.suitableForVerification(Algorithm.ES256))
-  }
-
-  test("suitableForVerification: key_ops without Verify fails") {
-    val jwk = Jwk.EcPublicKey(
-      crv = EcCurve.P256,
-      x = Base64UrlString.fromUnsafe("dGVzdA"),
-      y = Base64UrlString.fromUnsafe("dGVzdA"),
-      use = None,
-      keyOps = Some(Chunk(KeyOp.Sign)),
-      alg = None,
-      kid = None
-    )
-    assert(!jwk.suitableForVerification(Algorithm.ES256))
-  }
-
-  test("suitableForVerification: matching alg passes") {
-    val jwk = Jwk.EcPublicKey(
-      crv = EcCurve.P256,
-      x = Base64UrlString.fromUnsafe("dGVzdA"),
-      y = Base64UrlString.fromUnsafe("dGVzdA"),
-      use = None,
-      keyOps = None,
-      alg = Some(Algorithm.ES256),
-      kid = None
-    )
-    assert(jwk.suitableForVerification(Algorithm.ES256))
-  }
-
-  test("suitableForVerification: mismatched alg fails") {
-    val jwk = Jwk.EcPublicKey(
-      crv = EcCurve.P256,
-      x = Base64UrlString.fromUnsafe("dGVzdA"),
-      y = Base64UrlString.fromUnsafe("dGVzdA"),
-      use = None,
-      keyOps = None,
-      alg = Some(Algorithm.ES384),
-      kid = None
-    )
-    assert(!jwk.suitableForVerification(Algorithm.ES256))
-  }
-
-  test("suitableForSigning: use=Sig, key_ops=Sign, matching alg passes") {
-    val jwk = Jwk.EcPrivateKey(
-      crv = EcCurve.P256,
-      x = Base64UrlString.fromUnsafe("dGVzdA"),
-      y = Base64UrlString.fromUnsafe("dGVzdA"),
-      d = Base64UrlString.fromUnsafe("dGVzdA"),
-      use = Some(KeyUse.Sig),
-      keyOps = Some(Chunk(KeyOp.Sign)),
-      alg = Some(Algorithm.ES256),
-      kid = None
-    )
-    assert(jwk.suitableForSigning(Algorithm.ES256))
-  }
-
-  test("suitableForVerification companion alias works") {
-    val jwk = Jwk.EcPublicKey(
-      crv = EcCurve.P256,
-      x = Base64UrlString.fromUnsafe("dGVzdA"),
-      y = Base64UrlString.fromUnsafe("dGVzdA"),
-      use = None,
-      keyOps = None,
-      alg = None,
-      kid = None
-    )
-    // Companion alias (non-curried)
-    assert(Jwk.suitableForVerification(jwk, Algorithm.ES256))
-  }
-
   // -- EC point-on-curve validation during conversion --
 
   test("EC JWK with invalid point rejected") {
@@ -467,24 +274,4 @@ class JwkSuite extends munit.FunSuite:
     val result = jwk.toPublicKey
     assert(result.isLeft)
   }
-
-  // -- CanEqual --
-
-  test("Jwk derives CanEqual") {
-    val a: Jwk = Jwk.SymmetricKey(
-      k = Base64UrlString.fromUnsafe("dGVzdA"),
-      use = None,
-      keyOps = None,
-      alg = None,
-      kid = None
-    )
-    val b: Jwk = Jwk.SymmetricKey(
-      k = Base64UrlString.fromUnsafe("dGVzdA"),
-      use = None,
-      keyOps = None,
-      alg = None,
-      kid = None
-    )
-    assertEquals(a, b)
-  }
-end JwkSuite
+end JwkJvmSuite

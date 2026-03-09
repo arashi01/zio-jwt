@@ -105,7 +105,7 @@ object KeySource:
 
       val selected = header.kid match
         case Some(headerKid) =>
-          filtered.filter(_.keyId.contains(headerKid)) match
+          filtered.filter(_.kid.contains(headerKid)) match
             case chunk if chunk.size == 1 => Right(chunk(0))
             case chunk if chunk.isEmpty   => Left(JwtError.KeyNotFound(Some(headerKid)))
             case chunk                    => Left(JwtError.AmbiguousKey(Some(headerKid), chunk.size))

@@ -24,6 +24,8 @@ import java.math.BigInteger
 import java.security.spec.ECFieldFp
 import java.security.spec.ECPoint
 
+import boilerplate.nullable.*
+
 import zio.jwt.*
 
 /** ECDSA sanity checks, point-on-curve validation, and algorithm-to-curve mapping. */
@@ -65,17 +67,15 @@ object EcParams:
 
   /** Validates that the point (x, y) lies on the specified curve: y^2 mod p = (x^3 + ax + b) mod p. */
   def validatePointOnCurve(crv: EcCurve, point: ECPoint): Either[JwtError, Unit] =
-    import scala.language.unsafeNulls
-
     val ecSpec = crv.spec
-    val curve = ecSpec.getCurve
+    val curve = ecSpec.getCurve.unsafe("EC spec has null curve")
     curve.getField match
       case fp: ECFieldFp =>
-        val p = fp.getP
-        val a = curve.getA
-        val b = curve.getB
-        val x = point.getAffineX
-        val y = point.getAffineY
+        val p = fp.getP.unsafe("ECFieldFp has null p")
+        val a = curve.getA.unsafe("EC curve has null a")
+        val b = curve.getB.unsafe("EC curve has null b")
+        val x = point.getAffineX.unsafe("EC point has null x")
+        val y = point.getAffineY.unsafe("EC point has null y")
 
         // y^2 mod p
         val lhs = y.modPow(BigInteger.valueOf(2), p)

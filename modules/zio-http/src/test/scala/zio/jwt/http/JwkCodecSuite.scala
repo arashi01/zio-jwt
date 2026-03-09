@@ -151,10 +151,10 @@ class JwkCodecSuite extends FunSuite:
     )
     val bytes = writeToArray(jwk)
     val decoded = readFromArray[Jwk](bytes)
-    assertEquals(decoded.keyUse, Some(KeyUse.Sig))
-    assertEquals(decoded.keyOperations, Some(Chunk(KeyOp.Sign, KeyOp.Verify)))
-    assertEquals(decoded.keyAlgorithm, Some(Algorithm.HS256))
-    assertEquals(decoded.keyId, Some(Kid.fromUnsafe("test-kid")))
+    assertEquals(decoded.use, Some(KeyUse.Sig))
+    assertEquals(decoded.keyOps, Some(Chunk(KeyOp.Sign, KeyOp.Verify)))
+    assertEquals(decoded.alg, Some(Algorithm.HS256))
+    assertEquals(decoded.kid, Some(Kid.fromUnsafe("test-kid")))
   }
 
   // -- Jwk decoding errors --

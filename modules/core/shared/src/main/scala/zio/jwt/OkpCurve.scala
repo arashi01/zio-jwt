@@ -44,7 +44,9 @@ object OkpCurve:
     /** Wire-format name for JSON serialisation (e.g. "Ed25519", "Ed448"). */
     inline def name: String = curveToString(crv)
 
-    /** JCA named curve identifier. */
+    /** JCA named curve identifier. Identical to [[name]] for OKP curves (unlike [[EcCurve]] where
+      * wire-format and JCA names differ).
+      */
     inline def jcaName: String = crv match
       case Ed25519 => "Ed25519"
       case Ed448   => "Ed448"

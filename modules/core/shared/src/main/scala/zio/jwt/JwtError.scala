@@ -72,6 +72,12 @@ enum JwtError extends Throwable with NoStackTrace derives CanEqual:
   /** A remote resource (e.g. JWKS endpoint) could not be fetched. */
   case FetchError(message: String)
 
+  /** Claims or header could not be serialised to JSON. */
+  case EncodeError(message: String)
+
+  /** No authentication token was provided (e.g. missing `Authorization: Bearer` header). */
+  case MissingToken
+
   /** The `crit` header lists parameters that this implementation does not understand (RFC 7515
     * ss4.1.11).
     */
@@ -104,6 +110,10 @@ enum JwtError extends Throwable with NoStackTrace derives CanEqual:
       s"Ambiguous key${kid.fold("")(k => s" for kid '${k.unwrap}'")}: $count keys match"
     case FetchError(message) =>
       s"Fetch error: $message"
+    case EncodeError(message) =>
+      s"Encode error: $message"
+    case MissingToken =>
+      "No bearer token provided"
     case CriticalHeaderUnsupported(parameters) =>
       s"Unsupported critical header parameters: ${parameters.mkString(", ")}"
 end JwtError

@@ -188,6 +188,44 @@ class SignatureEngineSuite extends munit.FunSuite:
       case other                  => fail(s"Expected InvalidKey, got $other")
   }
 
+  // -- EdDSA tests --
+
+  private lazy val ed25519KeyPair =
+    val kpg = KeyPairGenerator.getInstance("Ed25519")
+    kpg.generateKeyPair()
+
+  test("EdDSA Ed25519 sign and verify round-trip") {
+    val sig = SignatureEngine.sign(testData, ed25519KeyPair.getPrivate, Algorithm.EdDSA)
+    assert(sig.isRight, s"sign failed: ${sig.left.toOption}")
+    val result = SignatureEngine.verify(testData, sig.toOption.get, ed25519KeyPair.getPublic, Algorithm.EdDSA)
+    assertEquals(result, Right(()))
+  }
+
+  test("EdDSA rejects zero-length signature") {
+    val result = SignatureEngine.verify(testData, Array.emptyByteArray, ed25519KeyPair.getPublic, Algorithm.EdDSA)
+    assertEquals(result, Left(JwtError.InvalidSignature))
+  }
+
+  test("EdDSA rejects wrong-length signature (truncated)") {
+    val sig = SignatureEngine.sign(testData, ed25519KeyPair.getPrivate, Algorithm.EdDSA)
+    assert(sig.isRight)
+    val truncated = sig.toOption.get.take(32)
+    val result = SignatureEngine.verify(testData, truncated, ed25519KeyPair.getPublic, Algorithm.EdDSA)
+    assertEquals(result, Left(JwtError.InvalidSignature))
+  }
+
+  test("EdDSA rejects all-zero 64-byte signature") {
+    val allZero = new Array[Byte](64)
+    val result = SignatureEngine.verify(testData, allZero, ed25519KeyPair.getPublic, Algorithm.EdDSA)
+    assertEquals(result, Left(JwtError.InvalidSignature))
+  }
+
+  test("EdDSA rejects oversized signature") {
+    val oversized = new Array[Byte](128)
+    val result = SignatureEngine.verify(testData, oversized, ed25519KeyPair.getPublic, Algorithm.EdDSA)
+    assertEquals(result, Left(JwtError.InvalidSignature))
+  }
+
   // -- Key type mismatch tests --
 
   test("sign with SecretKey rejects non-HMAC algorithm") {
