@@ -205,10 +205,10 @@ class KeySourceSuite extends ZSuite:
 
   // -- Companion alias for resolution --
 
-  testZ("KeySource.resolvePublicKey companion alias works") {
+  testZ("KeySource.resolveVerificationKey companion alias works") {
     val key = ecJwk(None, None, None, None)
     val source = KeySource.static(key)
     val header = JoseHeader(alg = Algorithm.ES256, typ = None, cty = None, kid = None, x5t = None, x5tS256 = None, crit = None)
-    KeySource.resolvePublicKey(source, header).map(_ => ())
+    KeySource.resolveVerificationKey(source, header).map(_ => ())
   }
 end KeySourceSuite

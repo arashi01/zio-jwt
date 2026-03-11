@@ -33,6 +33,9 @@ object Kid extends OpaqueType[Kid]:
   inline def wrap(value: String): Kid = value
   inline def unwrap(value: Kid): String = value
 
+  inline def apply(inline value: String): Kid = fromUnsafe(value)
+
   override protected inline def validate(value: String): Option[IllegalArgumentException] =
     if value.isEmpty then Some(IllegalArgumentException("Kid must not be empty"))
     else None
+end Kid

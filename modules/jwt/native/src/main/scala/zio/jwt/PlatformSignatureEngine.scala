@@ -20,28 +20,20 @@
  */
 package zio.jwt
 
-import java.security.AlgorithmParameters
-import java.security.spec.ECGenParameterSpec
-import java.security.spec.ECParameterSpec
+import zio.IO
+import zio.ZIO
 
-import boilerplate.nullable.*
+/** Native signature engine stub. Native crypto integration is planned for a future release. */
+// Not `private[jwt]` for consistency with JS (Scala.js backend limitation)
+object PlatformSignatureEngine:
 
-// JVM-specific extensions on EcCurve requiring JCA types.
-// Discoverable via `import zio.jwt.*`.
+  /** Signs `data` using the given [[Jwk]] and [[Algorithm]]. Not yet implemented on Native. */
+  def sign(data: Array[Byte], jwk: Jwk, alg: Algorithm): IO[JwtError, Array[Byte]] =
+    val _ = (data, jwk) // stub — parameters unused until native crypto integration
+    ZIO.fail(JwtError.UnsupportedAlgorithm(s"Signing not yet supported on Native: ${alg.name}"))
 
-private lazy val p256Spec: ECParameterSpec = loadEcSpec("secp256r1")
-private lazy val p384Spec: ECParameterSpec = loadEcSpec("secp384r1")
-private lazy val p521Spec: ECParameterSpec = loadEcSpec("secp521r1")
-
-private def loadEcSpec(name: String): ECParameterSpec =
-  val params = AlgorithmParameters.getInstance("EC")
-  params.init(ECGenParameterSpec(name))
-  params.getParameterSpec(classOf[ECParameterSpec]).unsafe(s"JCA returned null EC spec for $name")
-
-extension (crv: EcCurve)
-
-  /** JCA EC parameter specification for key construction. */
-  def spec: ECParameterSpec = crv match
-    case EcCurve.P256 => p256Spec
-    case EcCurve.P384 => p384Spec
-    case EcCurve.P521 => p521Spec
+  /** Verifies `signature` against `data`. Not yet implemented on Native. */
+  def verify(data: Array[Byte], signature: Array[Byte], jwk: Jwk, alg: Algorithm): IO[JwtError, Unit] =
+    val _ = (data, signature, jwk) // stub — parameters unused until native crypto integration
+    ZIO.fail(JwtError.UnsupportedAlgorithm(s"Verification not yet supported on Native: ${alg.name}"))
+end PlatformSignatureEngine

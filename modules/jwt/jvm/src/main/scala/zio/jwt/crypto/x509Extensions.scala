@@ -26,7 +26,6 @@ import boilerplate.nullable.*
 
 import zio.jwt.Base64UrlString
 import zio.jwt.JwtError
-import zio.jwt.PlatformBase64
 
 // X.509 certificate thumbprint extensions (RFC 7515 §4.1.7-8).
 // Discoverable via `import zio.jwt.crypto.*`.
@@ -37,11 +36,11 @@ extension (cert: X509Certificate)
   def x5t: Either[JwtError, Base64UrlString] =
     PlatformDigest
       .digest("SHA-1", cert.getEncoded.unsafe)
-      .map(hash => Base64UrlString.wrap(PlatformBase64.urlEncode(hash)))
+      .map(hash => Base64UrlString.encode(hash))
 
   /** SHA-256 thumbprint for the JOSE `x5t#S256` header parameter (RFC 7515 ss4.1.8). */
   def x5tS256: Either[JwtError, Base64UrlString] =
     PlatformDigest
       .digest("SHA-256", cert.getEncoded.unsafe)
-      .map(hash => Base64UrlString.wrap(PlatformBase64.urlEncode(hash)))
+      .map(hash => Base64UrlString.encode(hash))
 end extension

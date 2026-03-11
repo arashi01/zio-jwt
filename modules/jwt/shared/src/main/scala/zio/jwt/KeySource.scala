@@ -20,10 +20,6 @@
  */
 package zio.jwt
 
-import java.security.PrivateKey
-import java.security.PublicKey
-import javax.crypto.SecretKey
-
 import scala.annotation.targetName
 
 import zio.Chunk
@@ -39,7 +35,7 @@ import zio.ZIO
 trait KeySource:
   def keys: UIO[Chunk[Jwk]]
 
-/** Companion for [[KeySource]]. Provides static factories and key resolution logic. */
+/** Companion for [[KeySource]]. Provides static factories and Jwk-centric key resolution. */
 object KeySource:
 
   /** Creates a [[KeySource]] backed by a fixed set of keys. */
@@ -50,51 +46,26 @@ object KeySource:
   /** Creates a [[KeySource]] backed by a single key. */
   def static(jwk: Jwk): KeySource = static(Chunk(jwk))
 
-  // -- Verification-oriented resolution --
+  /** Resolves a [[Jwk]] suitable for signature verification matching the given header. */
+  def resolveVerificationKey(source: KeySource, header: JoseHeader): IO[JwtError, Jwk] =
+    resolveJwk(source, header, _.suitableForVerification(header.alg))
 
-  /** Resolves a public key suitable for verification matching the given header. */
-  def resolvePublicKey(source: KeySource, header: JoseHeader): IO[JwtError, PublicKey] =
-    source.resolvePublicKey(header)
-
-  /** Resolves a secret key suitable for verification matching the given header. */
-  def resolveSecretKey(source: KeySource, header: JoseHeader): IO[JwtError, SecretKey] =
-    source.resolveSecretKey(header)
-
-  // -- Signing-oriented resolution --
-
-  /** Resolves a private key suitable for signing matching the given header. */
-  def resolveSigningPrivateKey(source: KeySource, header: JoseHeader): IO[JwtError, PrivateKey] =
-    source.resolveSigningPrivateKey(header)
-
-  /** Resolves a secret key suitable for signing matching the given header. */
-  def resolveSigningSecretKey(source: KeySource, header: JoseHeader): IO[JwtError, SecretKey] =
-    source.resolveSigningSecretKey(header)
+  /** Resolves a [[Jwk]] suitable for signing matching the given header. */
+  def resolveSigningKey(source: KeySource, header: JoseHeader): IO[JwtError, Jwk] =
+    resolveJwk(source, header, _.suitableForSigning(header.alg))
 
   extension (source: KeySource)
 
-    /** Resolves a public key suitable for verification. */
-    @targetName("keySourceResolvePublicKey")
-    def resolvePublicKey(header: JoseHeader): IO[JwtError, PublicKey] =
-      resolveJwk(source, header, _.suitableForVerification(header.alg))
-        .flatMap(jwk => ZIO.fromEither(jwk.toPublicKey))
+    /** Resolves a [[Jwk]] suitable for signature verification. */
+    @targetName("keySourceResolveVerificationKey")
+    def resolveVerificationKey(header: JoseHeader): IO[JwtError, Jwk] =
+      KeySource.resolveVerificationKey(source, header)
 
-    /** Resolves a secret key suitable for verification. */
-    @targetName("keySourceResolveSecretKey")
-    def resolveSecretKey(header: JoseHeader): IO[JwtError, SecretKey] =
-      resolveJwk(source, header, _.suitableForVerification(header.alg))
-        .flatMap(jwk => ZIO.fromEither(jwk.toSecretKey))
+    /** Resolves a [[Jwk]] suitable for signing. */
+    @targetName("keySourceResolveSigningKey")
+    def resolveSigningKey(header: JoseHeader): IO[JwtError, Jwk] =
+      KeySource.resolveSigningKey(source, header)
 
-    /** Resolves a private key suitable for signing. */
-    @targetName("keySourceResolveSigningPrivateKey")
-    def resolveSigningPrivateKey(header: JoseHeader): IO[JwtError, PrivateKey] =
-      resolveJwk(source, header, _.suitableForSigning(header.alg))
-        .flatMap(jwk => ZIO.fromEither(jwk.toPrivateKey))
-
-    /** Resolves a secret key suitable for signing. */
-    @targetName("keySourceResolveSigningSecretKey")
-    def resolveSigningSecretKey(header: JoseHeader): IO[JwtError, SecretKey] =
-      resolveJwk(source, header, _.suitableForSigning(header.alg))
-        .flatMap(jwk => ZIO.fromEither(jwk.toSecretKey))
   end extension
 
   // -- Internal resolution logic --

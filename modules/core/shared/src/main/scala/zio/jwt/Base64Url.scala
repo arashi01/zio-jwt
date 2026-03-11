@@ -20,28 +20,23 @@
  */
 package zio.jwt
 
-import java.security.AlgorithmParameters
-import java.security.spec.ECGenParameterSpec
-import java.security.spec.ECParameterSpec
+import boilerplate.codec.Base64
 
-import boilerplate.nullable.*
+/** Base64url encoding and decoding per RFC 4648 ss5 (URL-safe alphabet, no padding).
+  *
+  * Delegates to [[boilerplate.codec.Base64]] with `urlSafe = true`.
+  */
+private[jwt] object Base64Url:
 
-// JVM-specific extensions on EcCurve requiring JCA types.
-// Discoverable via `import zio.jwt.*`.
+  /** Encodes binary data to a base64url string without padding. */
+  inline def encode(data: Array[Byte]): String =
+    Base64.encode(data, true)
 
-private lazy val p256Spec: ECParameterSpec = loadEcSpec("secp256r1")
-private lazy val p384Spec: ECParameterSpec = loadEcSpec("secp384r1")
-private lazy val p521Spec: ECParameterSpec = loadEcSpec("secp521r1")
+  /** Decodes a base64url string to binary data. Returns `Left` for invalid input. */
+  inline def decode(input: String): Either[JwtError, Array[Byte]] =
+    Base64
+      .decode(input, true)
+      .left
+      .map(e => JwtError.MalformedToken(e.getMessage))
 
-private def loadEcSpec(name: String): ECParameterSpec =
-  val params = AlgorithmParameters.getInstance("EC")
-  params.init(ECGenParameterSpec(name))
-  params.getParameterSpec(classOf[ECParameterSpec]).unsafe(s"JCA returned null EC spec for $name")
-
-extension (crv: EcCurve)
-
-  /** JCA EC parameter specification for key construction. */
-  def spec: ECParameterSpec = crv match
-    case EcCurve.P256 => p256Spec
-    case EcCurve.P384 => p384Spec
-    case EcCurve.P521 => p521Spec
+end Base64Url
