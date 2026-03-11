@@ -33,7 +33,9 @@ object Base64UrlString extends OpaqueType[Base64UrlString]:
   inline def wrap(value: String): Base64UrlString = value
   inline def unwrap(value: Base64UrlString): String = value
 
-  override inline def validate(value: String): Option[IllegalArgumentException] =
+  inline def apply(inline value: String): Base64UrlString = fromUnsafe(value)
+
+  override protected inline def validate(value: String): Option[IllegalArgumentException] =
     val len = value.length
     if len == 0 then Some(IllegalArgumentException("Base64UrlString must not be empty"))
     else
@@ -49,4 +51,12 @@ object Base64UrlString extends OpaqueType[Base64UrlString]:
       else Some(IllegalArgumentException("Base64UrlString contains invalid base64url characters"))
     end if
   end validate
+
+  /** Encodes binary data as a base64url string. Always produces a valid [[Base64UrlString]]. */
+  def encode(data: Array[Byte]): Base64UrlString = wrap(Base64Url.encode(data))
+
+  extension (b64: Base64UrlString)
+    /** Decodes this base64url string to binary data. */
+    def decodeBytes: Either[JwtError, Array[Byte]] = Base64Url.decode(unwrap(b64))
+
 end Base64UrlString

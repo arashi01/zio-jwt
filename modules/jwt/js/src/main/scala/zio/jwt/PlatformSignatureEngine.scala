@@ -20,17 +20,23 @@
  */
 package zio.jwt
 
-import boilerplate.nullable.*
+import zio.IO
+import zio.ZIO
 
-/** JVM base64url implementation backed by `java.util.Base64`. */
-private[jwt] object PlatformBase64:
+/** JS signature engine stub. Web Crypto API integration is planned for a future release.
+  *
+  * Not `private[jwt]` due to Scala.js backend limitation with package-qualified access across
+  * sub-packages (assertion failure: "Cannot use package as value").
+  */
+object PlatformSignatureEngine:
 
-  inline def urlDecode(input: String): Either[JwtError, Array[Byte]] =
-    scala.util
-      .Try(java.util.Base64.getUrlDecoder.decode(input).unsafe)
-      .toEither
-      .left
-      .map(e => JwtError.MalformedToken(e.getMessage.getOrElse("base64 decode failed")))
+  /** Signs `data` using the given [[Jwk]] and [[Algorithm]]. Not yet implemented on JS. */
+  def sign(data: Array[Byte], jwk: Jwk, alg: Algorithm): IO[JwtError, Array[Byte]] =
+    val _ = (data, jwk) // stub — parameters unused until Web Crypto integration
+    ZIO.fail(JwtError.UnsupportedAlgorithm(s"Signing not yet supported on JS: ${alg.name}"))
 
-  inline def urlEncode(data: Array[Byte]): String =
-    java.util.Base64.getUrlEncoder.withoutPadding().encodeToString(data).unsafe
+  /** Verifies `signature` against `data`. Not yet implemented on JS. */
+  def verify(data: Array[Byte], signature: Array[Byte], jwk: Jwk, alg: Algorithm): IO[JwtError, Unit] =
+    val _ = (data, signature, jwk) // stub — parameters unused until Web Crypto integration
+    ZIO.fail(JwtError.UnsupportedAlgorithm(s"Verification not yet supported on JS: ${alg.name}"))
+end PlatformSignatureEngine

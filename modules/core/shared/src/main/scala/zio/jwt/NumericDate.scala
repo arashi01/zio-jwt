@@ -35,6 +35,8 @@ object NumericDate extends OpaqueType[NumericDate]:
   inline def wrap(value: Instant): NumericDate = value
   inline def unwrap(value: NumericDate): Instant = value
 
+  inline def apply(inline value: Instant): NumericDate = wrap(value)
+
   override protected inline def validate(value: Instant): Option[IllegalArgumentException] = None
 
   inline def fromEpochSecond(epoch: Long): NumericDate = Instant.ofEpochSecond(epoch)

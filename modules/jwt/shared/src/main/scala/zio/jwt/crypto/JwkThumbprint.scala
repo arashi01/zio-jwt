@@ -45,7 +45,7 @@ object JwkThumbprint:
     val jsonBytes = canonicalJson.getBytes(StandardCharsets.UTF_8)
     PlatformDigest
       .digest(hashAlgorithm, jsonBytes)
-      .map(hash => Base64UrlString.wrap(PlatformBase64.urlEncode(hash)))
+      .map(hash => Base64UrlString.encode(hash))
 
   /** Computes the SHA-256 thumbprint and wraps it as a [[Kid]] for use as a key identifier. */
   def asKid(jwk: Jwk): Either[JwtError, Kid] =
@@ -53,8 +53,6 @@ object JwkThumbprint:
 
   // -- Canonical JSON per RFC 7638 §3.2 --
   // Required members in Unicode code-point order per key type.
-
-  // scalafix:off DisableSyntax.asInstanceOf; Bypass opaque type for Base64UrlString/EcCurve/OkpCurve unwrapping
 
   private def canonicalMembers(jwk: Jwk): String = jwk match
     case ec: Jwk.EcPublicKey    => ecCanonical(ec.crv, ec.x, ec.y)
@@ -68,27 +66,25 @@ object JwkThumbprint:
   // EC: {"crv":"...","kty":"EC","x":"...","y":"..."}
   private inline def ecCanonical(crv: EcCurve, x: Base64UrlString, y: Base64UrlString): String =
     val c = crv.name
-    val xStr = x.asInstanceOf[String]
-    val yStr = y.asInstanceOf[String]
+    val xStr = Base64UrlString.unwrap(x)
+    val yStr = Base64UrlString.unwrap(y)
     s"""{"crv":"$c","kty":"EC","x":"$xStr","y":"$yStr"}"""
 
   // RSA: {"e":"...","kty":"RSA","n":"..."}
   private inline def rsaCanonical(e: Base64UrlString, n: Base64UrlString): String =
-    val eStr = e.asInstanceOf[String]
-    val nStr = n.asInstanceOf[String]
+    val eStr = Base64UrlString.unwrap(e)
+    val nStr = Base64UrlString.unwrap(n)
     s"""{"e":"$eStr","kty":"RSA","n":"$nStr"}"""
 
   // oct: {"k":"...","kty":"oct"}
   private inline def octCanonical(k: Base64UrlString): String =
-    val kStr = k.asInstanceOf[String]
+    val kStr = Base64UrlString.unwrap(k)
     s"""{"k":"$kStr","kty":"oct"}"""
 
   // OKP: {"crv":"...","kty":"OKP","x":"..."}
   private inline def okpCanonical(crv: OkpCurve, x: Base64UrlString): String =
     val c = crv.name
-    val xStr = x.asInstanceOf[String]
+    val xStr = Base64UrlString.unwrap(x)
     s"""{"crv":"$c","kty":"OKP","x":"$xStr"}"""
-
-  // scalafix:on
 
 end JwkThumbprint

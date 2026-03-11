@@ -82,15 +82,15 @@ class JwtDecoderSuite extends munit.FunSuite:
   // Header:  {"alg":"HS256","typ":"JWT"}
   // Payload: {"iss":"test","sub":"user1","role":"admin"}
   // Signature: dummy (not verified by JwtDecoder)
-  private val testHeaderB64 = PlatformBase64.urlEncode(
+  private val testHeaderB64 = Base64Url.encode(
     """{"alg":"HS256","typ":"JWT"}""".getBytes(StandardCharsets.UTF_8)
   )
 
-  private val testPayloadB64 = PlatformBase64.urlEncode(
+  private val testPayloadB64 = Base64Url.encode(
     """{"iss":"test","sub":"user1","role":"admin"}""".getBytes(StandardCharsets.UTF_8)
   )
 
-  private val testSigB64 = PlatformBase64.urlEncode(Array[Byte](1, 2, 3, 4))
+  private val testSigB64 = Base64Url.encode(Array[Byte](1, 2, 3, 4))
 
   // TokenString requires exactly three base64url segments
   private val testToken: TokenString =
@@ -132,7 +132,7 @@ class JwtDecoderSuite extends munit.FunSuite:
 
   test("decode fails with DecodeError when header codec fails") {
     // Build a token where the header is valid base64url but not valid JSON for our codec
-    val badHeaderB64 = PlatformBase64.urlEncode("""{"noalg":true}""".getBytes(StandardCharsets.UTF_8))
+    val badHeaderB64 = Base64Url.encode("""{"noalg":true}""".getBytes(StandardCharsets.UTF_8))
     TokenString.from(s"$badHeaderB64.$testPayloadB64.$testSigB64") match
       case Left(_)  => () // shouldn't happen
       case Right(t) =>
@@ -141,24 +141,24 @@ class JwtDecoderSuite extends munit.FunSuite:
         assert(result.left.toOption.get.isInstanceOf[JwtError.DecodeError]) // scalafix:ok
   }
 
-  test("PlatformBase64 urlDecode round-trips with urlEncode") {
+  test("Base64Url decode round-trips with encode") {
     val original = Array[Byte](0, 1, 2, 127, -128, -1, 42, 99)
-    val encoded = PlatformBase64.urlEncode(original)
-    val decoded = PlatformBase64.urlDecode(encoded)
+    val encoded = Base64Url.encode(original)
+    val decoded = Base64Url.decode(encoded)
     assert(decoded.isRight)
     assert(decoded.toOption.get.sameElements(original), "round-trip mismatch")
   }
 
-  test("PlatformBase64 urlEncode produces no padding") {
+  test("Base64Url encode produces no padding") {
     val data = Array[Byte](1, 2, 3)
-    val encoded = PlatformBase64.urlEncode(data)
+    val encoded = Base64Url.encode(data)
     assert(!encoded.contains('='), s"encoded string contains padding: $encoded")
     assert(!encoded.contains('+'), s"encoded string contains '+': $encoded")
     assert(!encoded.contains('/'), s"encoded string contains '/': $encoded")
   }
 
-  test("PlatformBase64 urlDecode rejects invalid input") {
-    val result = PlatformBase64.urlDecode("not valid base64 $$$")
+  test("Base64Url decode rejects invalid input") {
+    val result = Base64Url.decode("not valid base64 $$$")
     assert(result.isLeft)
   }
 

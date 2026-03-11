@@ -39,6 +39,8 @@ object TokenString extends OpaqueType[TokenString]:
   inline def wrap(value: String): TokenString = value
   inline def unwrap(value: TokenString): String = value
 
+  inline def apply(inline value: String): TokenString = fromUnsafe(value)
+
   // Hotpath: single-pass scan counts dot separators, validates base64url alphabet,
   // and rejects empty segments -- avoids regex and intermediate allocations.
   override protected inline def validate(value: String): Option[IllegalArgumentException] =

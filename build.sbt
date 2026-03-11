@@ -20,7 +20,8 @@ inThisBuild(
 )
 
 val libraries = new {
-  val boilerplate = Def.setting("io.github.arashi01" %%% "boilerplate" % "0.4.1")
+  val boilerplate = Def.setting("io.github.arashi01" %%% "boilerplate" % "0.6.0")
+  val `boilerplate-codecs` = Def.setting("io.github.arashi01" %%% "boilerplate-codecs" % "0.6.0")
   val `jsoniter-scala-core` = Def.setting("com.github.plokhotnyuk.jsoniter-scala" %%% "jsoniter-scala-core" % "2.38.9")
   val `jsoniter-scala-macros` = `jsoniter-scala-core`(_.withName("jsoniter-scala-macros"))
   val munit = Def.setting("org.scalameta" %%% "munit" % "1.2.4")
@@ -43,6 +44,7 @@ val `zio-jwt-core` =
     .settings(description := "Pure-Scala JWT core types, algorithms, and codec API")
     .nativeSettings(nativeSettings)
     .settings(libraryDependencies += libraries.boilerplate.value)
+    .settings(libraryDependencies += libraries.`boilerplate-codecs`.value)
     .settings(libraryDependencies += libraries.zio.value)
     .jsSettings(libraryDependencies += libraries.`scala-java-time`.value % Provided)
     .nativeSettings(libraryDependencies += libraries.`scala-java-time`.value % Provided)
@@ -63,7 +65,7 @@ val `zio-jwt-jsoniter` =
     .settings(libraryDependencies += libraries.`jsoniter-scala-macros`.value % Provided)
 
 val `zio-jwt` =
-  crossProject(JVMPlatform)
+  crossProject(JVMPlatform, JSPlatform, NativePlatform)
     .withoutSuffixFor(JVMPlatform)
     .crossType(CrossType.Full)
     .in(file("modules/jwt"))
@@ -72,7 +74,8 @@ val `zio-jwt` =
     .settings(unitTestSettings)
     .settings(fileHeaderSettings)
     .settings(publishSettings)
-    .settings(description := "JWT signing, verification, and validation for the JVM")
+    .settings(description := "JWT signing, verification, and validation")
+    .nativeSettings(nativeSettings)
 
 val `zio-http-jwt` =
   project
@@ -102,6 +105,7 @@ val `zio-jwt-js` =
     .settings(publish / skip := true)
     .aggregate(
       `zio-jwt-core`.js,
+      `zio-jwt`.js,
       `zio-jwt-jsoniter`.js
     )
 
@@ -111,6 +115,7 @@ val `zio-jwt-native` =
     .settings(publish / skip := true)
     .aggregate(
       `zio-jwt-core`.native,
+      `zio-jwt`.native,
       `zio-jwt-jsoniter`.native
     )
 
