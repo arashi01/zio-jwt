@@ -18,30 +18,21 @@
  * IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
  * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
-package zio.jwt
-
-import java.security.AlgorithmParameters
-import java.security.spec.ECGenParameterSpec
-import java.security.spec.ECParameterSpec
+package zio.jwt.crypto
 
 import boilerplate.nullable.*
 
-// JVM-specific extensions on EcCurve requiring JCA types.
-// Discoverable via `import zio.jwt.*`.
+import zio.jwt.JwtError
 
-private lazy val p256Spec: ECParameterSpec = loadEcSpec("secp256r1")
-private lazy val p384Spec: ECParameterSpec = loadEcSpec("secp384r1")
-private lazy val p521Spec: ECParameterSpec = loadEcSpec("secp521r1")
+/** Native cryptographic digest backed by `java.security.MessageDigest` (Scala Native javalib). */
+// Not `private[jwt]` for consistency with JS (Scala.js backend limitation)
+object PlatformDigest:
 
-private def loadEcSpec(name: String): ECParameterSpec =
-  val params = AlgorithmParameters.getInstance("EC")
-  params.init(ECGenParameterSpec(name))
-  params.getParameterSpec(classOf[ECParameterSpec]).unsafe(s"JCA returned null EC spec for $name")
-
-extension (crv: EcCurve)
-
-  /** JCA EC parameter specification for key construction. */
-  def spec: ECParameterSpec = crv match
-    case EcCurve.P256 => p256Spec
-    case EcCurve.P384 => p384Spec
-    case EcCurve.P521 => p521Spec
+  def digest(algorithm: String, data: Array[Byte]): Either[JwtError, Array[Byte]] =
+    scala.util
+      .Try {
+        java.security.MessageDigest.getInstance(algorithm).digest(data).unsafe
+      }
+      .toEither
+      .left
+      .map(e => JwtError.InvalidKey(e.getMessage.getOrElse("digest failed")))

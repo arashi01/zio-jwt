@@ -24,7 +24,6 @@ import java.nio.charset.StandardCharsets
 import java.time.Duration
 import java.time.Instant
 
-import scala.util.Try
 import scala.util.boundary
 import scala.util.boundary.break
 
@@ -35,8 +34,6 @@ import zio.ZIO
 import zio.ZLayer
 
 import boilerplate.nullable.*
-
-import zio.jwt.crypto.SignatureEngine
 
 /** Service for validating JWT tokens. Instances live in the ZIO environment; construct via
   * [[JwtValidator$ JwtValidator]].live.
@@ -92,34 +89,34 @@ object JwtValidator:
     signingInput: Array[Byte]
   )
 
-  // scalafix:off DisableSyntax.asInstanceOf; bypasses opaque type allowing deferred inline methods on JwtCodec
   private inline def parseSegments(token: TokenString): Either[JwtError, TokenSegments] =
-    val raw = token.asInstanceOf[String]
+    val raw = TokenString.unwrap(token)
     val dot1 = raw.indexOf('.')
     val dot2 = if dot1 >= 0 then raw.indexOf('.', dot1 + 1) else -1
     if dot1 < 0 || dot2 < 0 then Left(JwtError.MalformedToken("Token must contain exactly three segments"))
     else
-      Try {
-        val decoder = java.util.Base64.getUrlDecoder
-        TokenSegments(
-          headerBytes = decoder.decode(raw.substring(0, dot1)).unsafe,
-          payloadBytes = decoder.decode(raw.substring(dot1 + 1, dot2)).unsafe,
-          signatureBytes = decoder.decode(raw.substring(dot2 + 1)).unsafe,
-          signingInput = raw.substring(0, dot2).getBytes(StandardCharsets.US_ASCII).unsafe
-        )
-      }.toEither.left.map(e => JwtError.MalformedToken(e.getMessage.getOrElse("malformed token")))
+      for
+        headerBytes <- Base64Url.decode(raw.substring(0, dot1))
+        payloadBytes <- Base64Url.decode(raw.substring(dot1 + 1, dot2))
+        signatureBytes <- Base64Url.decode(raw.substring(dot2 + 1))
+      yield TokenSegments(
+        headerBytes = headerBytes,
+        payloadBytes = payloadBytes,
+        signatureBytes = signatureBytes,
+        signingInput = raw.substring(0, dot2).getBytes(StandardCharsets.US_ASCII)
+      )
+    end if
   end parseSegments
 
   // -- Temporal validation --
 
   private inline def validateExp(exp: NumericDate, now: Instant, clockSkew: Duration): Either[JwtError, Unit] =
     // RFC 7519 ss4.1.4: reject when now >= exp + clockSkew
-    Either.cond(now.isBefore(exp.asInstanceOf[Instant].plus(clockSkew)), (), JwtError.Expired(exp, now))
+    Either.cond(now.isBefore(NumericDate.unwrap(exp).plus(clockSkew)), (), JwtError.Expired(exp, now))
 
   private inline def validateNbf(nbf: NumericDate, now: Instant, clockSkew: Duration): Either[JwtError, Unit] =
     // RFC 7519 ss4.1.5: reject when now < nbf - clockSkew
-    Either.cond(!now.isBefore(nbf.asInstanceOf[Instant].minus(clockSkew)), (), JwtError.NotYetValid(nbf, now))
-  // scalafix:on
+    Either.cond(!now.isBefore(NumericDate.unwrap(nbf).minus(clockSkew)), (), JwtError.NotYetValid(nbf, now))
 
   // -- Claim validation --
 
@@ -232,15 +229,9 @@ object JwtValidator:
       Either.cond(config.allowedAlgorithms.contains(alg), (), JwtError.UnsupportedAlgorithm(alg.name))
 
     private inline def verifySignature(header: JoseHeader, segments: TokenSegments): IO[JwtError, Unit] =
-      header.alg.family match
-        case AlgorithmFamily.HMAC =>
-          keySource.resolveSecretKey(header).flatMap { key =>
-            ZIO.fromEither(SignatureEngine.verify(segments.signingInput, segments.signatureBytes, key, header.alg))
-          }
-        case _ =>
-          keySource.resolvePublicKey(header).flatMap { key =>
-            ZIO.fromEither(SignatureEngine.verify(segments.signingInput, segments.signatureBytes, key, header.alg))
-          }
+      KeySource.resolveVerificationKey(keySource, header).flatMap { jwk =>
+        PlatformSignatureEngine.verify(segments.signingInput, segments.signatureBytes, jwk, header.alg)
+      }
 
     private inline def validateAllClaims(
       header: JoseHeader,

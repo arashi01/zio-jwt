@@ -1,6 +1,6 @@
 # zio-jwt
 
-Pure Scala 3 JWT library built on [ZIO](https://zio.dev) — signing, verification, validation, JWK, JWKS rotation, OIDC discovery, and zio-http middleware in a single dependency.
+Pure Scala 3 JWT library built on [ZIO](https://zio.dev) — signing, verification, validation, JWK, JWKS rotation, OIDC discovery, and zio-http middleware.
 
 ## Features
 
@@ -12,7 +12,7 @@ Pure Scala 3 JWT library built on [ZIO](https://zio.dev) — signing, verificati
 | JWKS background refresh | Non-blocking fetch with exponential backoff, stampede prevention, last-known-good retention, and rate limiting |
 | OIDC Discovery | Auto-discover JWKS URLs from `/.well-known/openid-configuration` |
 | zio-http middleware | `HandlerAspect` extracting `Authorization: Bearer` tokens with typed context |
-| Cross-platform decoding | Decode tokens without signature verification on JVM, JS, and Native |
+| Cross-platform | Core types, JWK model, validation, and issuance APIs on JVM, JS, and Native; full crypto on JVM |
 | Structured errors | `JwtError` enum for pattern matching in the ZIO error channel |
 | Pluggable JSON | `JwtCodec[A]` trait — bring your own serialiser or use the provided jsoniter-scala codecs |
 | Strict equality | All types derive `CanEqual` for `-language:strictEquality` |
@@ -49,7 +49,7 @@ Pure Scala 3 JWT library built on [ZIO](https://zio.dev) — signing, verificati
 libraryDependencies ++= Seq(
   "io.github.arashi01" %%% "zio-jwt-core"     % "<version>", // cross-platform types and decoding
   "io.github.arashi01" %%% "zio-jwt-jsoniter"  % "<version>", // jsoniter-scala codec instances
-  "io.github.arashi01" %%  "zio-jwt"           % "<version>", // JVM — signing, verification, JWK
+  "io.github.arashi01" %%% "zio-jwt"           % "<version>", // signing, verification, validation, JWK
   "io.github.arashi01" %%  "zio-http-jwt"      % "<version>"  // JVM — zio-http middleware, JWKS, OIDC
 )
 ```
@@ -59,7 +59,7 @@ libraryDependencies ++= Seq(
 ```
 zio-jwt-core       (JVM / JS / Native)   Types, error ADT, codec trait, JwtDecoder
 zio-jwt-jsoniter   (JVM / JS / Native)   jsoniter-scala codec instances
-zio-jwt            (JVM)                 JCA signing, verification, validation, JWK
+zio-jwt            (JVM / JS / Native)   Signing, verification, validation, JWK
 zio-http-jwt       (JVM)                 zio-http middleware, JWKS client, OIDC discovery
 ```
 
@@ -70,6 +70,8 @@ zio-jwt-core  ◂──  zio-jwt  ◂──  zio-http-jwt
 ```
 
 Most JVM applications need `zio-http-jwt` (which transitively brings `zio-jwt`, `zio-jwt-core`, and `zio-jwt-jsoniter`).
+
+**Platform notes:** Full signing, verification, and JWK support is available on JVM. JS and Native platforms provide the full type model, key source, and validation/issuance API surface; crypto operations (signing and verification) are currently stubbed and will be implemented via Web Crypto (JS) and platform-native backends in a future release.
 
 ### Imports
 
@@ -248,20 +250,18 @@ val layer: ZLayer[Client & Scope, JwtError, JwksProvider] =
 ```scala
 import zio.jwt.*
 
-// JCA key → JWK
-val jwk: Either[JwtError, Jwk] = Jwk.from(rsaPublicKey, Some(Kid.fromUnsafe("rsa-1")))
-
-// JWK → JCA key
-val key: Either[JwtError, java.security.PublicKey] = jwk.flatMap(_.toPublicKey)
-
-// Static key source
+// Static key source (cross-platform)
 val source: KeySource = KeySource.static(myJwk)
 val multiSource: KeySource = KeySource.static(Chunk(jwk1, jwk2))
+
+// JCA key ↔ JWK (JVM only — import zio.jwt.* brings JVM extensions)
+val jwk: Either[JwtError, Jwk] = Jwk.from(rsaPublicKey, Some(Kid.fromUnsafe("rsa-1")))
+val key: Either[JwtError, java.security.PublicKey] = jwk.flatMap(_.toPublicKey)
 ```
 
 **JWK variants:** `EcPublicKey`, `EcPrivateKey`, `RsaPublicKey`, `RsaPrivateKey`, `SymmetricKey`, `OkpPublicKey`, `OkpPrivateKey`.
 
-Key resolution filters by `use`, `key_ops`, `alg`, and `kid` before converting to JCA keys.
+Key resolution filters by `use`, `key_ops`, `alg`, and `kid`. The shared `KeySource` resolves keys as `Jwk` values; JVM-only extensions provide JCA key type resolution (`resolvePublicKey`, `resolveSecretKey`, etc.).
 
 ---
 

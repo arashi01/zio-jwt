@@ -44,37 +44,26 @@ import scala.util.Try
 import boilerplate.nullable.*
 
 import zio.jwt.crypto.EcParams
+import zio.jwt.crypto.validatePointOnCurve
 
 // JVM-specific JCA conversion extensions and factory methods on Jwk.
 // Discoverable via `import zio.jwt.*`.
 
-private val jwkBase64UrlDecoder: java.util.Base64.Decoder = java.util.Base64.getUrlDecoder
-private val jwkBase64UrlEncoder: java.util.Base64.Encoder = java.util.Base64.getUrlEncoder.withoutPadding()
-
 /** Decodes a base64url-encoded string to a positive BigInteger. */
 private inline def decodeBigInt(b64: Base64UrlString): Either[JwtError, BigInteger] =
-  Try {
-    // hotpath: unsafeNulls justified — tight base64/BigInteger decode loop, no nullable JCA returns
-    import scala.language.unsafeNulls
-    val bytes = jwkBase64UrlDecoder.decode(b64.asInstanceOf[String]) // scalafix:ok DisableSyntax.asInstanceOf; Bypass opaque type allowing use of deferred inline methods.
-    BigInteger(1, bytes)
-  }.toEither.left.map(e => JwtError.InvalidKey(e.getMessage.option.getOrElse("base64url decode failed")))
+  b64.decodeBytes.map(bytes => BigInteger(1, bytes))
 
 /** Encodes a positive BigInteger as base64url without padding, stripping the sign byte. */
 private inline def encodeBigInt(value: BigInteger): Base64UrlString =
-  // hotpath: unsafeNulls justified — tight BigInteger encode loop, no nullable JCA returns
-  import scala.language.unsafeNulls
   val bytes = value.toByteArray
   // Strip leading zero sign byte if present
   val unsigned = if bytes.length > 1 && bytes(0) == 0.toByte then bytes.drop(1) else bytes
-  Base64UrlString.wrap(jwkBase64UrlEncoder.encodeToString(unsigned))
+  Base64UrlString.encode(unsigned)
 
 /** Encodes a positive BigInteger as base64url, padded to the given field size in bytes. Used for EC
   * coordinates which must be padded to the curve's field element size.
   */
 private inline def encodeBigIntPadded(value: BigInteger, fieldSize: Int): Base64UrlString =
-  // hotpath: unsafeNulls justified — tight BigInteger encode loop, no nullable JCA returns
-  import scala.language.unsafeNulls
   val bytes = value.toByteArray
   val unsigned = if bytes.length > 1 && bytes(0) == 0.toByte then bytes.drop(1) else bytes
   val padded =
@@ -83,8 +72,7 @@ private inline def encodeBigIntPadded(value: BigInteger, fieldSize: Int): Base64
       val buf = new Array[Byte](fieldSize)
       System.arraycopy(unsigned, 0, buf, fieldSize - unsigned.length, unsigned.length)
       buf
-  Base64UrlString.wrap(jwkBase64UrlEncoder.encodeToString(padded))
-end encodeBigIntPadded
+  Base64UrlString.encode(padded)
 
 private val MinRsaKeyBits = 2048
 
@@ -163,9 +151,7 @@ extension (companion: Jwk.type)
     val encoded = key.getEncoded.option
     encoded match
       case Some(bytes) if bytes.nonEmpty =>
-        // hotpath: unsafeNulls justified — base64 encode of known-non-null bytes
-        import scala.language.unsafeNulls
-        val b64 = Base64UrlString.wrap(jwkBase64UrlEncoder.encodeToString(bytes))
+        val b64 = Base64UrlString.encode(bytes)
         Right(Jwk.SymmetricKey(k = b64, use = None, keyOps = None, alg = None, kid = kid))
       case _ =>
         Left(JwtError.InvalidKey("SecretKey has no encoded form"))
@@ -251,13 +237,10 @@ private inline def rsaToPrivateKey(
   yield key
 
 private inline def symmetricToSecretKey(kB64: Base64UrlString, alg: Option[Algorithm]): Either[JwtError, SecretKey] =
-  Try {
-    // hotpath: unsafeNulls justified — tight base64 decode + SecretKeySpec construction
-    import scala.language.unsafeNulls
-    val bytes = jwkBase64UrlDecoder.decode(kB64.asInstanceOf[String]) // scalafix:ok DisableSyntax.asInstanceOf; Bypass opaque type allowing use of deferred inline methods.
+  kB64.decodeBytes.map { bytes =>
     val jcaAlg = alg.fold("HmacSHA256")(_.jcaName)
     SecretKeySpec(bytes, jcaAlg): SecretKey
-  }.toEither.left.map(e => JwtError.InvalidKey(e.getMessage.option.getOrElse("symmetric key decode failed")))
+  }
 
 // -- Internal JCA -> JWK helpers --
 
@@ -365,41 +348,42 @@ private inline def edEcPublicKeyToX(edec: JcaEdEcPublicKey, crv: OkpCurve): Base
   // scalafix:on DisableSyntax.var, DisableSyntax.while
   // Set the high bit of the last byte if x is odd (RFC 8032)
   if point.isXOdd then leBytes(keyLen - 1) = (leBytes(keyLen - 1) | 0x80).toByte
-  Base64UrlString.wrap(jwkBase64UrlEncoder.encodeToString(leBytes))
+  Base64UrlString.encode(leBytes)
 end edEcPublicKeyToX
 
 private inline def okpToPublicKey(crv: OkpCurve, xB64: Base64UrlString): Either[JwtError, PublicKey] =
-  Try {
-    // hotpath: unsafeNulls justified — per-key-import byte manipulation, RFC 8032 decoding
-    import scala.language.unsafeNulls
-    val xBytes = jwkBase64UrlDecoder.decode(xB64.asInstanceOf[String]) // scalafix:ok DisableSyntax.asInstanceOf; Bypass opaque type
-    // Decode RFC 8032 little-endian encoding back to EdECPoint
-    val keyLen = crv.keyLength
-    val leBytes = if xBytes.length == keyLen then xBytes else java.util.Arrays.copyOf(xBytes, keyLen)
-    val isXOdd = (leBytes(keyLen - 1) & 0x80) != 0
-    leBytes(keyLen - 1) = (leBytes(keyLen - 1) & 0x7f).toByte
-    // scalafix:off DisableSyntax.var, DisableSyntax.while; hot-path byte-level RFC 8032 decoding
-    // Reverse little-endian to big-endian for BigInteger
-    val beBytes = new Array[Byte](keyLen)
-    var i = 0
-    while i < keyLen do
-      beBytes(i) = leBytes(keyLen - 1 - i)
-      i += 1
-    // scalafix:on DisableSyntax.var, DisableSyntax.while
-    val y = BigInteger(1, beBytes)
-    val point = java.security.spec.EdECPoint(isXOdd, y)
-    val spec = java.security.spec.EdECPublicKeySpec(NamedParameterSpec(crv.jcaName), point)
-    KeyFactory.getInstance("EdDSA").generatePublic(spec)
-  }.toEither.left.map(e => JwtError.InvalidKey(e.getMessage.option.getOrElse("OKP public key generation failed")))
+  xB64.decodeBytes.flatMap { xBytes =>
+    Try {
+      // hotpath: unsafeNulls justified — per-key-import byte manipulation, RFC 8032 decoding
+      import scala.language.unsafeNulls
+      // Decode RFC 8032 little-endian encoding back to EdECPoint
+      val keyLen = crv.keyLength
+      val leBytes = if xBytes.length == keyLen then xBytes else java.util.Arrays.copyOf(xBytes, keyLen)
+      val isXOdd = (leBytes(keyLen - 1) & 0x80) != 0
+      leBytes(keyLen - 1) = (leBytes(keyLen - 1) & 0x7f).toByte
+      // scalafix:off DisableSyntax.var, DisableSyntax.while; hot-path byte-level RFC 8032 decoding
+      // Reverse little-endian to big-endian for BigInteger
+      val beBytes = new Array[Byte](keyLen)
+      var i = 0
+      while i < keyLen do
+        beBytes(i) = leBytes(keyLen - 1 - i)
+        i += 1
+      // scalafix:on DisableSyntax.var, DisableSyntax.while
+      val y = BigInteger(1, beBytes)
+      val point = java.security.spec.EdECPoint(isXOdd, y)
+      val spec = java.security.spec.EdECPublicKeySpec(NamedParameterSpec(crv.jcaName), point)
+      KeyFactory.getInstance("EdDSA").generatePublic(spec)
+    }.toEither.left.map(e => JwtError.InvalidKey(e.getMessage.option.getOrElse("OKP public key generation failed")))
+  }
 
 private inline def okpToPrivateKey(crv: OkpCurve, dB64: Base64UrlString): Either[JwtError, PrivateKey] =
-  Try {
-    // hotpath: unsafeNulls justified — per-key-import byte manipulation
-    import scala.language.unsafeNulls
-    val dBytes = jwkBase64UrlDecoder.decode(dB64.asInstanceOf[String]) // scalafix:ok DisableSyntax.asInstanceOf; Bypass opaque type
-    val spec = java.security.spec.EdECPrivateKeySpec(NamedParameterSpec(crv.jcaName), dBytes)
-    KeyFactory.getInstance("EdDSA").generatePrivate(spec)
-  }.toEither.left.map(e => JwtError.InvalidKey(e.getMessage.option.getOrElse("OKP private key generation failed")))
+  dB64.decodeBytes.flatMap { dBytes =>
+    Try {
+      import scala.language.unsafeNulls // hotpath: unsafeNulls justified — JCA KeyFactory.generatePrivate non-null
+      val spec = java.security.spec.EdECPrivateKeySpec(NamedParameterSpec(crv.jcaName), dBytes)
+      KeyFactory.getInstance("EdDSA").generatePrivate(spec)
+    }.toEither.left.map(e => JwtError.InvalidKey(e.getMessage.option.getOrElse("OKP private key generation failed")))
+  }
 
 private inline def fromEdEcPublicKey(edec: JcaEdEcPublicKey, kid: Option[Kid]): Either[JwtError, Jwk] =
   for crv <- okpCurveFromEdEcKey(edec)
@@ -413,8 +397,6 @@ private inline def fromEdEcPrivateKey(edec: JcaEdEcPrivateKey, edecPub: JcaEdEcP
     crv <- okpCurveFromEdEcKey(edecPub)
     dBytes <- edec.getBytes.toScala.toRight(JwtError.InvalidKey("EdEC private key has no raw bytes"))
   yield
-    // hotpath: unsafeNulls justified — base64 encode of known-non-null bytes
-    import scala.language.unsafeNulls
     val x = edEcPublicKeyToX(edecPub, crv)
-    val dB64 = Base64UrlString.wrap(jwkBase64UrlEncoder.encodeToString(dBytes))
+    val dB64 = Base64UrlString.encode(dBytes)
     Jwk.OkpPrivateKey(crv = crv, x = x, d = dB64, use = None, keyOps = None, alg = None, kid = kid)

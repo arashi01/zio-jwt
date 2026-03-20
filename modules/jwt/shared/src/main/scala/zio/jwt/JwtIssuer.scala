@@ -28,8 +28,6 @@ import zio.ZLayer
 
 import boilerplate.nullable.*
 
-import zio.jwt.crypto.SignatureEngine
-
 /** Service for issuing JWT tokens. Instances live in the ZIO environment; construct via
   * [[JwtIssuer$ JwtIssuer]].live.
   *
@@ -56,10 +54,8 @@ object JwtIssuer:
       yield LiveIssuer(config, keySource, headerCodec, claimsCodec)
     }
 
-  private val base64UrlEncoder = java.util.Base64.getUrlEncoder.withoutPadding()
-
   private inline def base64UrlEncode(bytes: Array[Byte]): String =
-    base64UrlEncoder.encodeToString(bytes).unsafe
+    Base64Url.encode(bytes)
 
   /** Merges two JSON objects at byte level. Fields from `secondary` appear after `primary` in the
     * output, giving secondary precedence on field collisions (last-occurrence-wins per
@@ -119,14 +115,8 @@ object JwtIssuer:
     end issue
 
     private inline def sign(header: JoseHeader, data: Array[Byte]): IO[JwtError, Array[Byte]] =
-      header.alg.family match
-        case AlgorithmFamily.HMAC =>
-          keySource.resolveSigningSecretKey(header).flatMap { key =>
-            ZIO.fromEither(SignatureEngine.sign(data, key, header.alg))
-          }
-        case _ =>
-          keySource.resolveSigningPrivateKey(header).flatMap { key =>
-            ZIO.fromEither(SignatureEngine.sign(data, key, header.alg))
-          }
+      KeySource.resolveSigningKey(keySource, header).flatMap { jwk =>
+        PlatformSignatureEngine.sign(data, jwk, header.alg)
+      }
   end LiveIssuer
 end JwtIssuer
