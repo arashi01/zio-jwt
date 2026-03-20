@@ -309,4 +309,4 @@ jobs:
         uses: sbt/setup-sbt@v1
 
       - name: Submit Dependency Graph
-        uses: scalacenter/sbt-dependency-submission@v2
+        uses: scalacenter/sbt-dependency-submission@v3
